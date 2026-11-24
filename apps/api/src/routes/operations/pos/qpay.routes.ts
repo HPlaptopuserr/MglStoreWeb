@@ -1,3 +1,4 @@
+import { recordPosQrProviderResponse } from "../../../services/pos-qr-provider-response";
 import { processPosQrInvoiceLifecycle } from "../../../services/pos-qpay-lifecycle";
 import { reconcilePosQPayInvoicePayment, observePosQrReconciliation, resolveSystemQrConfig, isSystemQrAuthenticationError } from "../../../services/pos-qpay-reconciliation";
 import type { QPayInvoice as QPayInvoiceResponse } from "@mgl/types";
@@ -320,21 +321,19 @@ router.post(["/pos/payments/qpay/invoice", "/pos/payments/systemqr/invoice"], as
         });
       }
 
-      const updated = await prisma.qPayInvoice.update({
-        where: { id: invoice.id },
-        data: {
-          qrText: qpayData.qr_text,
-          webhookPayload: {
-            merchantScope: organizationMerchant ? "ORGANIZATION" : "REGISTER",
-            providerInvoiceId: qpayData.invoice_id,
-            provider: systemQrConfig ? "SYSTEMQR" : "QPAY",
-            merchantCode: systemQrConfig?.merchantCode || null,
-            qrImage: qpayData.qr_image,
-            deepLinks: qpayData.urls as unknown as Prisma.JsonArray,
-            merchantKey: merchantContext?.merchantKey || null,
-            ...(checkout ? { checkout: checkout as unknown as Prisma.JsonObject } : {}),
-          } as unknown as Prisma.JsonObject,
-        },
+      const updated = await recordPosQrProviderResponse({
+        invoiceId: invoice.id,
+        qrText: qpayData.qr_text,
+        metadata: {
+          merchantScope: organizationMerchant ? "ORGANIZATION" : "REGISTER",
+          providerInvoiceId: qpayData.invoice_id,
+          provider: systemQrConfig ? "SYSTEMQR" : "QPAY",
+          merchantCode: systemQrConfig?.merchantCode || null,
+          qrImage: qpayData.qr_image,
+          deepLinks: qpayData.urls as unknown as Prisma.JsonArray,
+          merchantKey: merchantContext?.merchantKey || null,
+          ...(checkout ? { checkout: checkout as unknown as Prisma.JsonObject } : {}),
+        } as unknown as Prisma.InputJsonObject,
       });
 
       void prisma.auditLog.create({
@@ -449,14 +448,24 @@ router.post("/pos/payments/qpay/review", async (req, res) => {
       return res.status(409).json({ message: "QR хүсэлт банканд цуцлагдсан байна. Дахин төлөв шалгах шаардлагагүй." });
     const checkout = checkoutFromPayload(invoice.webhookPayload);
     if (!checkout || basket.clientSaleId !== checkout.clientSaleId || basket.registerId !== invoice.registerId) return res.sendStatus(409);
-    if (invoice.status !== PosQPayStatus.EXPIRED || invoice.expiresAt > new Date()) {
+    const payloadBeforeReview = (invoice.webhookPayload || {}) as Record<string, unknown>;
+    const cancelMissingQr = req.body?.cancelMissingQr === true &&
+      !invoice.qrText.trim() && !String(payloadBeforeReview.qrImage || "").trim() &&
+      !String(payloadBeforeReview.providerInvoiceId || "").trim();
+    if (!cancelMissingQr && (invoice.status !== PosQPayStatus.EXPIRED || invoice.expiresAt > new Date())) {
       return res.status(409).json({ message: "QR-ийн хугацаа дуусаагүй эсвэл төлбөр баталгаажсан байна" });
     }
-    if (await reconcilePosQPayInvoicePayment(invoice)) return res.status(409).json({ message: "Төлбөр баталгаажсан. Борлуулалтаа дуусгана уу." });
+    if (invoice.status === PosQPayStatus.PAID || invoice.paidAt || invoice.consumedAt ||
+        (!cancelMissingQr && await reconcilePosQPayInvoicePayment(invoice))) return res.status(409).json({ message: "Төлбөр баталгаажсан. Борлуулалтаа дуусгана уу." });
     const archiveId = await prisma.$transaction(async tx => {
       await lockOrganizationInventory(tx, invoice.organizationId!);
+      await tx.$queryRaw`SELECT "id" FROM "QPayInvoice" WHERE "id" = ${id} FOR UPDATE`;
       const current = await tx.qPayInvoice.findUniqueOrThrow({ where: { id } });
-      if (current.status !== PosQPayStatus.EXPIRED || current.paidAt || current.consumedAt) throw new Error("Payment changed");
+      if ((!cancelMissingQr && current.status !== PosQPayStatus.EXPIRED) ||
+          (current.status !== PosQPayStatus.PENDING && current.status !== PosQPayStatus.EXPIRED) || current.paidAt || current.consumedAt) throw new Error("Payment changed");
+      const latestPayload = (current.webhookPayload || {}) as Record<string, unknown>;
+      if (cancelMissingQr && (current.qrText.trim() || String(latestPayload.qrImage || "").trim() ||
+          String(latestPayload.providerInvoiceId || "").trim())) throw new Error("QR creation completed");
       const payload = (current.webhookPayload || {}) as Prisma.JsonObject;
       if (typeof payload.reviewArchiveId === "string") return payload.reviewArchiveId;
       const cards = await tx.cardPaymentAttempt.count({ where: { organizationId: invoice.organizationId,
@@ -467,9 +476,13 @@ router.post("/pos/payments/qpay/review", async (req, res) => {
       if (cards || otherQr || sale) throw new Error("Other payment evidence exists");
       const archive = await tx.auditLog.create({ data: { userId: actor.id, action: AuditAction.POS_REGISTER_UPDATED,
         meta: { event: "EXPIRED_QR_CHECKOUT_REVIEW", organizationId: invoice.organizationId, registerId: invoice.registerId,
-          invoiceId: id, clientSaleId: checkout.clientSaleId, snapshot, reviewRequired: true, financialStateUnchanged: true } } });
-      await tx.qPayInvoice.update({ where: { id }, data: { webhookPayload: { ...payload,
-        reviewArchiveId: archive.id, reviewRequestedAt: new Date().toISOString(), requiresPaymentReconciliation: true } } });
+          invoiceId: id, clientSaleId: checkout.clientSaleId, snapshot, reviewRequired: true, financialStateUnchanged: true,
+          ...(cancelMissingQr ? { reason: "MISSING_QR_USER_CANCELLED", bankCancellationConfirmed: false } : {}) } } });
+      await tx.qPayInvoice.update({ where: { id }, data: {
+        ...(cancelMissingQr ? { status: PosQPayStatus.EXPIRED, expiresAt: new Date() } : {}),
+        webhookPayload: { ...payload, ...(cancelMissingQr ? { checkoutAbandonedAt: new Date().toISOString(), providerCancellationConfirmed: false } : {}),
+          reviewArchiveId: archive.id, reviewRequestedAt: new Date().toISOString(), requiresPaymentReconciliation: true },
+      } });
       return archive.id;
     });
     return res.json({ archiveId });

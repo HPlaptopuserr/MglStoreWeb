@@ -40,13 +40,54 @@ export function BankAccountsEditor({
 }: BankAccountsEditorProps) {
   if (managedBySystem) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
-        <p className="font-semibold text-slate-800">Орлого хүлээн авах данс</p>
-        <p className="mt-1">
-          Орлого хүлээн авах дансыг Minu Merchant-ийн тохиргоогоор удирдана.
-          Энэ хэсэгт банкны данс нэмэх шаардлагагүй.
-        </p>
-      </div>
+      <section
+        aria-label="Орлого хүлээн авах данс"
+        className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600"
+      >
+        <h3 className="font-semibold text-slate-800">
+          Орлого хүлээн авах данс
+        </h3>
+        <p>Дансны өөрчлөлтийг Minu Merchant дээр хийнэ.</p>
+        {loadState === "loading" && (
+          <p role="status">Дансны мэдээлэл ачаалж байна…</p>
+        )}
+        {(loadState === "error" || loadState === "forbidden") && (
+          <div role="alert">
+            <p>
+              {loadState === "forbidden"
+                ? "Данс харахад Owner эсвэл Admin эрх шаардлагатай."
+                : "Дансны мэдээллийг ачаалж чадсангүй."}
+            </p>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="min-h-10 font-semibold underline"
+            >
+              Дахин оролдох
+            </button>
+          </div>
+        )}
+        {loadState === "ready" && savedAccounts.length > 0 && (
+          <>
+            <p className="text-xs">
+              Бүртгүүлэхэд хадгалсан дансны мэдээлэл. Minu Merchant дээр дараа
+              нь өөрчилсөн данс энд автоматаар шинэчлэгдэхгүй.
+            </p>
+            {savedAccounts.map((account) => (
+              <SavedBankAccountCard
+                key={`${account.account_bank_code}-${account.account_number}`}
+                account={account}
+              />
+            ))}
+          </>
+        )}
+        {loadState === "ready" && savedAccounts.length === 0 && (
+          <p>
+            Одоогийн Minu холболтоор банк, дансны дугаар, эзэмшигчийн мэдээлэл
+            ирээгүй байна. Энэ нь Minu дээр данс бүртгэлгүй гэсэн үг биш.
+          </p>
+        )}
+      </section>
     );
   }
 

@@ -49,8 +49,70 @@ export function ManualMerchantConnectionPanel({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const isSystemQr = provider === "systemqr";
 
+  if (isSystemQr) {
+    return (
+      <section className="mx-auto max-w-2xl space-y-4 rounded-2xl border border-indigo-100 bg-white p-5 shadow-sm sm:p-6">
+        <div>
+          <h3 className="font-bold text-slate-950 sm:text-lg">
+            Minu Dynamic QR мерчант холбох
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Minu Merchant дээрх Merchant Code-оо оруулна уу. Орлого хүлээн авах
+            дансыг Minu Merchant-ийн тохиргоогоор удирдана.
+          </p>
+        </div>
+        <Field label="Merchant Code">
+          <input
+            aria-label="Minu Merchant Code"
+            type="text"
+            autoComplete="off"
+            placeholder="Minu Merchant дээрх код"
+            value={merchantId}
+            disabled={isSubmitting}
+            onChange={(event) => onMerchantIdChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && merchantId.trim() && !isSubmitting)
+                onConnect();
+            }}
+            className={merchantInputClass}
+          />
+        </Field>
+        <button
+          type="button"
+          onClick={onConnect}
+          disabled={isSubmitting || !merchantId.trim()}
+          className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 text-sm font-bold text-white hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50"
+        >
+          {isSubmitting ? (
+            <Loader2
+              aria-hidden="true"
+              className="h-4 w-4 animate-spin motion-reduce:animate-none"
+            />
+          ) : (
+            <Link2 aria-hidden="true" className="h-4 w-4" />
+          )}
+          {isSubmitting ? "Minu бүртгэл шалгаж байна…" : "Minu мерчант холбох"}
+        </button>
+        <button
+          type="button"
+          onClick={() => onProviderChange("qpay")}
+          className="min-h-10 text-sm font-semibold text-slate-600 underline"
+        >
+          Бусад QR мерчант холбох
+        </button>
+      </section>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-4">
+      <button
+        type="button"
+        onClick={() => onProviderChange("systemqr")}
+        className="min-h-10 text-sm font-semibold text-indigo-700 underline"
+      >
+        Minu Dynamic QR холбох
+      </button>
       <section className="overflow-hidden rounded-2xl border border-indigo-100 bg-white shadow-sm">
         <div className="border-b border-indigo-100 bg-gradient-to-r from-indigo-50 to-white p-5 sm:p-6">
           <div className="flex items-start gap-3">
@@ -59,11 +121,10 @@ export function ManualMerchantConnectionPanel({
             </span>
             <div>
               <h3 className="font-bold text-slate-950 sm:text-lg">
-                Өмнөх бүртгэлээ автоматаар холбох
+                QPay QuickQR бүртгэлээ олох
               </h3>
               <p className="mt-1 text-sm leading-6 text-slate-500">
-                Зөвхөн регистрийн дугаараа оруулна. Систем таны Minu Dynamic QR
-                бүртгэлийг олж энэ дэлгүүртэй холбоно.
+                QPay QuickQR дээр бүртгэлтэй регистрийн дугаараа оруулна уу.
               </p>
             </div>
           </div>
@@ -171,7 +232,9 @@ export function ManualMerchantConnectionPanel({
                   <input
                     type="password"
                     value={merchantKey}
-                    onChange={(event) => onMerchantKeyChange(event.target.value)}
+                    onChange={(event) =>
+                      onMerchantKeyChange(event.target.value)
+                    }
                     placeholder="•••••••••"
                     className={merchantInputClass}
                   />
@@ -180,7 +243,9 @@ export function ManualMerchantConnectionPanel({
                   <input
                     type="text"
                     value={invoiceCode}
-                    onChange={(event) => onInvoiceCodeChange(event.target.value)}
+                    onChange={(event) =>
+                      onInvoiceCodeChange(event.target.value)
+                    }
                     placeholder="Хоосон орхиж болно"
                     className={merchantInputClass}
                   />
@@ -191,7 +256,9 @@ export function ManualMerchantConnectionPanel({
             <button
               type="button"
               onClick={onConnect}
-              disabled={isSubmitting || !merchantId || (!isSystemQr && !merchantKey)}
+              disabled={
+                isSubmitting || !merchantId || (!isSystemQr && !merchantKey)
+              }
               className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}

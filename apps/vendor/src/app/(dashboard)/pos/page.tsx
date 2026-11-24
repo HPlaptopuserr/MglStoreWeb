@@ -1,4 +1,6 @@
 "use client";
+
+import { missingQrCancellationTarget } from "@/features/pos/utils/missing-qr-cancellation";
 import { issueClaimedQrFiscalReceipt } from "@/features/pos/utils/qr-fiscal-recovery";
 import { usePendingQrFiscalReceipts } from "@/features/pos/hooks/usePendingQrFiscalReceipts";
 import { isCurrentPaymentCheckout, verifiedQPayObservation, verifiedQPayCancellation, canReleaseReviewedUnpaidQr, type PaymentCheckoutScope } from "@/features/pos/utils/payment-checkout-scope";
@@ -3223,6 +3225,10 @@ export default function PosDemoPage() {
       setScanMessage("Банкны төлбөрийг шууд устгах боломжгүй. Төлбөрийн төлөвийг тулгаж шалгана уу.");
       return;
     }
+    if (missingQrCancellationTarget(paymentEntries, qpayModal, qpayCreatingRef.current) === target.invoiceId) {
+      await cancelCheckoutAndClearCart();
+      return;
+    }
     paymentRemovalRef.current.add(id);
     try {
       if (target.method === "QR" && target.invoiceId) {
@@ -3359,6 +3365,30 @@ export default function PosDemoPage() {
       setScanMessage(
         "Баталгаажсан төлбөртэй тул сагсыг цэвэрлэх боломжгүй. Гүйлгээг эхлээд дуусгана уу.",
       );
+      return;
+    }
+
+    const missingQrId = missingQrCancellationTarget(paymentEntries, qpayModal, qpayCreatingRef.current);
+    if (missingQrId && registerConfig?.id) {
+      if (deferringCheckoutRef.current) return;
+      const scope = currentPaymentCheckoutScope();
+      deferringCheckoutRef.current = true;
+      setDeferringCheckout(true);
+      try {
+        const saved = loadQPayCheckoutRecovery(organizationId, registerConfig.id);
+        if (!saved) throw new Error("Сагсны мэдээлэл хадгалагдаагүй байна. Дахин оролдоно уу.");
+        const archive = await archiveExpiredQPayCheckout(missingQrId, JSON.stringify(saved), undefined, true);
+        if (!isCurrentPaymentCheckout(scope, currentPaymentCheckoutScope())) return;
+        if (releaseReviewedQrCheckout(missingQrId, archive.archiveId)) {
+          setScanMessage("QR үүсээгүй төлбөрийн хүсэлт хаагдаж, касс чөлөөлөгдлөө.");
+        }
+      } catch (error: unknown) {
+        setScanStatus("not-found");
+        setScanMessage(error instanceof Error ? error.message : "Хүсэлтийг хааж чадсангүй. Дахин оролдоно уу.");
+      } finally {
+        deferringCheckoutRef.current = false;
+        setDeferringCheckout(false);
+      }
       return;
     }
 

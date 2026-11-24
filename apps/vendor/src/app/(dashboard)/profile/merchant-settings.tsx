@@ -388,6 +388,7 @@ export function MerchantSettingsSection({
         await loadMerchantStatus();
         await loadBankAccounts();
       } else if (data.alreadyRegistered) {
+        setManualProvider("systemqr");
         setRegistrationOpen(false);
         setExistingAccountOpen(true);
         setMessage({
@@ -431,7 +432,7 @@ export function MerchantSettingsSection({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          merchantId,
+          merchantId: merchantId.trim(),
           merchantKey: isSystemQr ? "systemqr" : merchantKey,
           ...(isSystemQr
             ? { invoiceCode: "SYSTEMQR" }
@@ -462,6 +463,10 @@ export function MerchantSettingsSection({
 
   /* ── Recover ──────────────────────────────────────────── */
   const handleRecover = async () => {
+    if (manualProvider === "systemqr") {
+      setMessage({ type: "error", text: "Minu Dynamic QR мерчантыг Merchant Code-оор холбоно уу." });
+      return;
+    }
     if (!recoveryRegNum) {
       setMessage({ type: "error", text: "Регистрийн дугаараа оруулна уу" });
       return;
@@ -891,6 +896,7 @@ export function MerchantSettingsSection({
           setMessage(null);
         }}
         onConnectExisting={() => {
+          setManualProvider("systemqr");
           setExistingAccountOpen(true);
           setMessage(null);
         }}

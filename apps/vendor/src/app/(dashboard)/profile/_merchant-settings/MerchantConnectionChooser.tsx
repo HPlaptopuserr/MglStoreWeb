@@ -46,7 +46,7 @@ export function MerchantConnectionChooser({
           onClick={onConnectExisting}
           className="flex min-h-14 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-100"
         >
-          Данс аль хэдийн байна
+          Бүртгэлтэй мерчант холбох
         </button>
       </div>
     </>

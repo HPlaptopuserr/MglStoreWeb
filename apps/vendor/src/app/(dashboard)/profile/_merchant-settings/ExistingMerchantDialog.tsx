@@ -59,10 +59,14 @@ export function ExistingMerchantDialog({
               id="existing-merchant-title"
               className="mt-1 text-xl font-black text-slate-950 sm:text-2xl"
             >
-              Өмнөх дансаа холбох
+              {provider === "systemqr"
+                ? "Minu мерчант холбох"
+                : "Өмнөх QR мерчант холбох"}
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Регистрийн дугаараар бүртгэлээ автоматаар олно.
+              {provider === "systemqr"
+                ? "Minu Merchant дээрх Merchant Code-оор холбоно."
+                : "QPay QuickQR бүртгэлээ регистрийн дугаараар хайна."}
             </p>
           </div>
           <button

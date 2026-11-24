@@ -81,4 +81,13 @@ test("vendor registration validates location and never saves failed provider reg
     assert.equal(registrations, 2);
     assert.equal(writes, 1);
   });
+  await t.test("0077 opens the existing merchant connection flow without storing a failed registration", async () => {
+    providerStatus = "0077";
+    const result = await registerVendorWithSystemQr("test-org", registration);
+    assert.equal(result.success, false);
+    assert.equal(result.alreadyRegistered, true);
+    assert.match(result.message, /Merchant Code/);
+    assert.equal(writes, 1);
+  });
+
 });

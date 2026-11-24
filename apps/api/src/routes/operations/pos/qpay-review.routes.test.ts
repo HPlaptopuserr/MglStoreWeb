@@ -15,9 +15,11 @@ let providerFails = false;
 let archiveFails = false;
 let foreign = false;
 let otherPayment = false;
+let missingQr = false;
+let qrArrived = false;
 let writes: Array<Record<string, unknown>>;
 let status: "EXPIRED" | "PAID" | "PENDING" = "EXPIRED";
-let currentStatus: "EXPIRED" | "PAID" = "EXPIRED";
+let currentStatus: "EXPIRED" | "PAID" | "PENDING" = "EXPIRED";
 const originalFetch = globalThis.fetch;
 const restores: Array<() => void> = [];
 function stub(target: object, key: string, value: unknown) {
@@ -29,9 +31,9 @@ const checkout = { clientSaleId: "sale", branchId: "branch", shiftId: "shift", l
 const snapshot = JSON.stringify({ clientSaleId: "sale", registerId: "register", cart: checkout.lines,
   paymentEntries: [{ method: "QR", status: "pending", invoiceId: "invoice", amount: 21600 }] });
 const invoice = () => ({ id: "invoice", organizationId: "org", registerId: "register", amount: 21600,
-  status, paidAt: null, consumedAt: null, expiresAt: new Date(0),
+  status, paidAt: null, consumedAt: null, expiresAt: new Date(0), qrText: "",
   register: { qpayEnabled: true, qpayMerchantId: "merchant", qpayTerminalId: "SYSTEMQR" },
-  webhookPayload: { provider: "SYSTEMQR", providerInvoiceId: "bank-invoice", merchantCode: "merchant", checkout } });
+  webhookPayload: { provider: "SYSTEMQR", providerInvoiceId: missingQr ? undefined : "bank-invoice", merchantCode: "merchant", checkout } });
 before(async () => {
   process.env.SYSTEMQR_BASE_URL = "https://review-provider.invalid";
   process.env.SYSTEMQR_DEEPLINK_URL = "https://review-provider.invalid";
@@ -53,14 +55,14 @@ before(async () => {
 after(async () => { globalThis.fetch = originalFetch; await new Promise<void>(resolve => server.close(() => resolve())); });
 afterEach(() => { while (restores.length) restores.pop()?.(); });
 beforeEach(() => {
-  paid = providerFails = archiveFails = foreign = otherPayment = false;
+  paid = providerFails = archiveFails = foreign = otherPayment = missingQr = qrArrived = false;
   status = currentStatus = "EXPIRED"; writes = [];
   stub(prisma.organization, "findUnique", async () => null);
   stub(prisma.user, "findUnique", async () => ({ id: "cashier", role: "USER", isActive: true, deletedAt: null }));
   stub(prisma.organizationMember, "findFirst", async () => foreign ? null : ({ organizationId: "org", role: "STAFF", capabilities: ["POS_CASHIER"] }));
   stub(prisma.organizationMember, "count", async () => foreign ? 0 : 1);
   stub(prisma.qPayInvoice, "findUnique", async () => invoice());
-  stub(prisma.qPayInvoice, "findUniqueOrThrow", async () => ({ ...invoice(), status: currentStatus }));
+  stub(prisma.qPayInvoice, "findUniqueOrThrow", async () => ({ ...invoice(), status: currentStatus, qrText: qrArrived ? "newly-created-qr" : "" }));
   stub(prisma.qPayInvoice, "count", async () => 0);
   stub(prisma.cardPaymentAttempt, "count", async () => otherPayment ? 1 : 0);
   stub(prisma.posSaleIdempotency, "count", async () => 0);
@@ -73,9 +75,9 @@ beforeEach(() => {
   });
   stub(prisma.qPayInvoice, "update", async ({ data }: { data: Record<string, unknown> }) => { writes.push(data); return invoice(); });
 });
-const post = () => fetch(base, { method: "POST", headers: { "Content-Type": "application/json",
+const post = (cancelMissingQr = false) => fetch(base, { method: "POST", headers: { "Content-Type": "application/json",
   Authorization: `Bearer ${jwt.sign({ userId: "cashier", organizationId: "org" }, JWT_SECRET)}` },
-  body: JSON.stringify({ invoiceId: "invoice", snapshot }) });
+  body: JSON.stringify({ invoiceId: "invoice", snapshot, cancelMissingQr }) });
 test("archives unpaid expired checkout without claiming cancellation, releasing stock, or consuming payment", async () => {
   const response = await post(); assert.equal(response.status, 200); assert.deepEqual(await response.json(), { archiveId: "audit" });
   assert.equal(writes.length, 2);
@@ -100,5 +102,35 @@ test("confirmed payment and foreign organization cannot be quarantined", async (
   assert.equal(writes.length, 0);
   status = "EXPIRED"; foreign = true;
   assert.ok([401, 403].includes((await post()).status));
+  assert.equal(writes.length, 0);
+});
+
+
+test("missing QR requests detach immediately while preserving a durable reconciliation record", async () => {
+  missingQr = true;
+  status = currentStatus = "PENDING";
+  providerFails = true;
+  const response = await post(true);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { archiveId: "audit" });
+  assert.equal(writes.length, 2);
+  assert.equal(writes[1].status, "EXPIRED");
+  const payload = writes[1].webhookPayload as Record<string, unknown>;
+  assert.equal(payload.providerCancellationConfirmed, false);
+  assert.equal(payload.requiresPaymentReconciliation, true);
+  assert.equal(payload.reviewArchiveId, "audit");
+  assert.deepEqual(payload.checkout, checkout);
+});
+test("missing-QR cancellation cannot detach a created QR or a payment that completed concurrently", async () => {
+  status = currentStatus = "PENDING";
+  assert.equal((await post(true)).status, 409);
+  assert.equal(writes.length, 0);
+  missingQr = true;
+  currentStatus = "PAID";
+  assert.equal((await post(true)).status, 503);
+  assert.equal(writes.length, 0);
+  currentStatus = "PENDING";
+  qrArrived = true;
+  assert.equal((await post(true)).status, 503);
   assert.equal(writes.length, 0);
 });

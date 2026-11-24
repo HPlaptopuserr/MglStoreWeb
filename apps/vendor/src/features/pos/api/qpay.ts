@@ -51,9 +51,9 @@ export function getQPayCheckoutRecovery(registerId: string, clientSaleId: string
   return posRequest(`/pos/payments/qpay/recovery?${new URLSearchParams({ registerId, clientSaleId })}`, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
 }
 
-export function archiveExpiredQPayCheckout(invoiceId: string, snapshot: string, signal?: AbortSignal): Promise<{ archiveId: string }> {
+export function archiveExpiredQPayCheckout(invoiceId: string, snapshot: string, signal?: AbortSignal, cancelMissingQr = false): Promise<{ archiveId: string }> {
   const timeout = AbortSignal.timeout(15_000);
   return posRequest("/pos/payments/qpay/review", {
-    method: "POST", body: { invoiceId, snapshot }, signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    method: "POST", body: { invoiceId, snapshot, ...(cancelMissingQr ? { cancelMissingQr: true } : {}) }, signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
   });
 }

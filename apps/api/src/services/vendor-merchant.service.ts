@@ -18,10 +18,12 @@ import {
   registerSystemQrSubMerchant,
   resetSystemQrSubMerchantPassword,
   validateSystemQrCredentials,
+  listSystemQrSubMerchants,
   type SystemQrRegisterSubMerchantParams,
 } from "./systemqr";
 import {
   isSystemQrRegistration001,
+  isSystemQrRegistrationDuplicate,
   SYSTEMQR_REGISTRATION_001_MESSAGE,
 } from "./systemqr-registration-error";
 import {
@@ -59,8 +61,7 @@ export const normalizeMerchantChannel = (
 export const isSystemQrMarker = (value?: string | null) =>
   String(value || "")
     .trim()
-    .toUpperCase() === "SYSTEMQR" ||
-  isSystemQrMerchantKey(value);
+    .toUpperCase() === "SYSTEMQR" || isSystemQrMerchantKey(value);
 
 const buildMerchantUpdateData = (
   channel: MerchantChannel,
@@ -187,6 +188,29 @@ export async function connectVendorMerchant(
       };
     }
 
+    if (isSystemQr) {
+      try {
+        const merchants = await listSystemQrSubMerchants();
+        if (
+          !merchants.some(
+            (merchant) => merchant.merchantCode === normalizedMerchantId,
+          )
+        ) {
+          return {
+            success: false,
+            message:
+              "Энэ Merchant Code Minu Dynamic QR бүртгэлээс олдсонгүй. Minu Merchant дээрх кодоо шалгана уу.",
+          };
+        }
+      } catch {
+        return {
+          success: false,
+          message:
+            "Minu Dynamic QR мерчантын бүртгэлийг шалгаж чадсангүй. Холболт хадгалагдаагүй. Дахин оролдоно уу.",
+        };
+      }
+    }
+
     // Update organization with merchant credentials
     await prisma.organization.update({
       where: { id: organizationId },
@@ -196,6 +220,8 @@ export async function connectVendorMerchant(
         invoiceCode: normalizedInvoiceCode,
         enabled: true,
         connectedAt: new Date(),
+        ...(isSystemQr && pickMerchantFields(org, channel).merchantId !== normalizedMerchantId
+          ? { bankAccounts: [] } : {}),
       }),
     });
 
@@ -614,7 +640,9 @@ export async function recoverVendorSystemQrCredentials(
     const password = String(result.password || "");
 
     if (returnedMerchantCode !== merchantCode) {
-      throw new Error("Minu өөр merchant-ийн мэдээлэл буцаалаа. Тохиргоо хадгалагдсангүй.");
+      throw new Error(
+        "Minu өөр merchant-ийн мэдээлэл буцаалаа. Тохиргоо хадгалагдсангүй.",
+      );
     }
     if (!username || !password) {
       throw new Error("Minu шинэ username/password буцаасангүй.");
@@ -746,7 +774,8 @@ export async function saveVendorSystemQrCredentials(
 
     return {
       success: true,
-      message: "Minu credential шалгагдаж, байгууллагын тохиргоонд хадгалагдлаа.",
+      message:
+        "Minu credential шалгагдаж, байгууллагын тохиргоонд хадгалагдлаа.",
       merchantId: merchantCode,
     };
   } catch (error) {
@@ -843,8 +872,20 @@ export async function registerVendorWithSystemQr(
     };
   } catch (error: unknown) {
     console.error("registerVendorWithSystemQr error", error);
+    if (isSystemQrRegistrationDuplicate(error)) {
+      return {
+        success: false,
+        alreadyRegistered: true,
+        message:
+          "Ижил нэртэй Minu мерчант бүртгэлтэй байна. Өмнөх мерчантаа Minu Merchant дээрх Merchant Code-оор холбоно уу.",
+      };
+    }
     if (error instanceof SystemQrLocationValidationError) {
-      return { success: false, code: "INVALID_LOCATION", message: error.message };
+      return {
+        success: false,
+        code: "INVALID_LOCATION",
+        message: error.message,
+      };
     }
     if (isSystemQrRegistration001(error)) {
       return {
@@ -1140,7 +1181,13 @@ export async function getVendorMerchantStatus(
       systemQrCredentialsStored: Boolean(systemQrAuth?.password),
       provider: isSystemQr ? "SYSTEMQR" : "QPAY",
       channel,
-      settlementMode: isSystemQr ? "PROVIDER" : isQuickQrMerchantId(selected.merchantId || "") ? "BANK_ACCOUNTS" : selected.enabled && selected.merchantId ? "PROVIDER" : "UNCONNECTED",
+      settlementMode: isSystemQr
+        ? "PROVIDER"
+        : isQuickQrMerchantId(selected.merchantId || "")
+          ? "BANK_ACCOUNTS"
+          : selected.enabled && selected.merchantId
+            ? "PROVIDER"
+            : "UNCONNECTED",
     };
   } catch (error) {
     console.error("vendor merchant status error", error);
