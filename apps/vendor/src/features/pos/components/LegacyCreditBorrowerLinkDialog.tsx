@@ -5,6 +5,7 @@ import { useRegisteredCreditBorrower } from "../hooks/useRegisteredCreditBorrowe
 import {
   linkExistingCreditBorrower,
   type ExpectedCreditBorrowerLink,
+  type LinkExistingCreditBorrowerResult,
 } from "../api/link-existing-credit-borrower";
 import {
   registeredBorrowerPhone,
@@ -22,7 +23,7 @@ export type LegacyCreditBorrowerLinkDialogProps = {
   targetType: "CUSTOMER" | "COMPANY";
   companyName?: string;
   onClose: () => void;
-  onLinked: () => void;
+  onLinked: (result: LinkExistingCreditBorrowerResult) => void;
 };
 
 export function LegacyCreditBorrowerLinkDialog({
@@ -68,7 +69,7 @@ export function LegacyCreditBorrowerLinkDialog({
     setSaving(true);
     setError("");
     try {
-      await linkExistingCreditBorrower(
+      const result = await linkExistingCreditBorrower(
         {
           organizationId,
           creditSaleIds,
@@ -81,7 +82,7 @@ export function LegacyCreditBorrowerLinkDialog({
         },
         controller.signal,
       );
-      if (!controller.signal.aborted) onLinked();
+      if (!controller.signal.aborted) onLinked(result);
     } catch (cause: unknown) {
       if (!controller.signal.aborted)
         setError(

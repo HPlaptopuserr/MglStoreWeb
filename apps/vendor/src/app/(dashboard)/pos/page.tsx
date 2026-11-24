@@ -5,7 +5,9 @@ import { isCurrentPaymentCheckout, verifiedQPayObservation, verifiedQPayCancella
 import { CUSTOMER_DISPLAY_REQUEST, createCustomerDisplayChannel, publishCustomerDisplayPayload, readDisplayStorage, sendCustomerDisplayPayload } from "@/features/pos/utils/customer-display-sync";
 
 import type { PosCreditListLine, PosCreditListItem, PosCreditRepaymentSelection } from "@/features/pos/types/credit-repayment";
-import { creditBorrowerGroupKey } from "@/features/pos/utils/credit-borrower-group";
+import { CreditLineAmount } from "@/features/pos/components/CreditLineAmount";
+import { CreditBorrowerConnection } from "@/features/pos/components/CreditBorrowerConnection";
+import { applyConfirmedCreditBorrowerLink, creditBorrowerGroupKey } from "@/features/pos/utils/credit-borrower-group";
 import { creditRepaymentReceiptLines } from "@/features/pos/utils/credit-repayment-amount";
 import { LegacyCreditBorrowerLinkDialog, type LegacyCreditBorrowerLinkDialogProps } from "@/features/pos/components/LegacyCreditBorrowerLinkDialog";
 import { CreditPaymentHistoryDialog } from "@/features/pos/components/CreditPaymentHistoryDialog";
@@ -233,6 +235,7 @@ type PosCreditCustomerGroup = {
   key: string;
   borrowerName: string;
   borrowerPhone: string | null;
+  borrowerUserId: string | null;
   employeeName: string | null;
   creditCount: number;
   principalAmount: number;
@@ -1670,6 +1673,7 @@ export default function PosDemoPage() {
           key: groupKey,
           borrowerName: credit.borrowerName,
           borrowerPhone: credit.borrowerPhone,
+          borrowerUserId: credit.borrowerUserId ?? null,
           employeeName: credit.employeeName,
           creditCount: 0,
           principalAmount: 0,
@@ -1930,7 +1934,7 @@ export default function PosDemoPage() {
   };
 
   const openLegacyCreditBorrowerLink = (group: PosCreditCustomerGroup) => {
-    if (!canLinkLegacyCredit || creditRepaymentSubmitting || paymentEntries.length) return;
+    if (!canLinkLegacyCredit || group.borrowerUserId || creditRepaymentSubmitting || paymentEntries.length) return;
     const credits = [...new Map(group.rows.map(row => [row.credit.id, row.credit])).values()];
     const first = credits[0];
     if (!first) return;
@@ -4560,7 +4564,8 @@ export default function PosDemoPage() {
       )}
 
       {creditBorrowerLinkChoice && <LegacyCreditBorrowerLinkDialog {...creditBorrowerLinkChoice} organizationId={organizationId}
-        onClose={() => setCreditBorrowerLinkChoice(null)} onLinked={() => {
+        onClose={() => setCreditBorrowerLinkChoice(null)} onLinked={(result) => {
+          setCreditSales(previous => applyConfirmedCreditBorrowerLink(previous, result));
           setCreditBorrowerLinkChoice(null); void reloadCreditSales(); void reloadCreditBorrowers();
           setScanStatus("success"); setScanMessage("Зээлийн мэдээлэл MGL бүртгэлтэй холбогдлоо. Зээлийн дүн өөрчлөгдөөгүй.");
         }} />}
@@ -5083,7 +5088,7 @@ export default function PosDemoPage() {
                         <th className="px-2 py-2">Зээлдэгч</th>
                         <th className="px-2 py-2">Зээлсэн бараа</th>
                         <th className="px-2 py-2 text-right">Тоо</th>
-                        <th className="px-2 py-2 text-right">Төлөх дүн</th>
+                        <th className="px-2 py-2 text-right">Дүн</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-amber-100">
@@ -5128,18 +5133,18 @@ export default function PosDemoPage() {
                               <td className="px-2 py-3">
                                 <div className="flex flex-wrap items-center gap-2">
                                   <span className="font-black text-slate-950">{group.borrowerName}</span>
-                                  {canLinkLegacyCredit && <button type="button"
-                                    disabled={creditRepaymentSubmitting || paymentEntries.length > 0}
-                                    onKeyDown={event => event.stopPropagation()}
-                                    onClick={event => { event.stopPropagation(); openLegacyCreditBorrowerLink(group); }}
-                                    className="rounded-lg border border-blue-200 bg-white px-2 py-1 text-[10px] font-bold text-blue-700 disabled:opacity-50">Дугаар · MGL бүртгэл</button>}
                                   <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-amber-700 ring-1 ring-amber-200">
                                     {group.creditCount} зээл
                                   </span>
                                 </div>
-                                <p className="mt-0.5 text-[11px] font-semibold text-slate-500">
-                                  {group.borrowerPhone || group.employeeName || "-"}
-                                </p>
+                                <CreditBorrowerConnection
+                                  borrowerUserId={group.borrowerUserId}
+                                  phone={group.borrowerPhone}
+                                  fallback={group.employeeName}
+                                  canLink={canLinkLegacyCredit}
+                                  disabled={creditRepaymentSubmitting || paymentEntries.length > 0}
+                                  onLink={() => openLegacyCreditBorrowerLink(group)}
+                                />
                               </td>
                               <td className="px-2 py-3 font-semibold text-slate-600">
                                 {group.rows.length} мөр
@@ -5151,6 +5156,7 @@ export default function PosDemoPage() {
                                 <p className="font-black tabular-nums text-amber-700">
                                   {formatMoney(group.totalDue)}
                                 </p>
+                                <p className="text-[10px] font-semibold text-amber-700">Нийт төлөх үлдэгдэл</p>
                                 <p className="text-[10px] font-semibold text-slate-400">
                                   Хүү: {formatMoney(group.totalInterest)}
                                 </p>
@@ -5198,12 +5204,7 @@ export default function PosDemoPage() {
                                     {formatPosQuantity(line.qty, line.measureUnit)}
                                   </td>
                                   <td className="px-2 py-2.5 text-right">
-                                    <p className="font-black tabular-nums text-slate-950">
-                                      {formatMoney(credit.totalDue)}
-                                    </p>
-                                    <p className="text-[10px] font-semibold text-slate-400">
-                                      Дараад төлөх
-                                    </p>
+                                    <CreditLineAmount line={line} onRepay={() => handleSelectCreditRepayment(credit)} />
                                   </td>
                                 </tr>
                               ))}
