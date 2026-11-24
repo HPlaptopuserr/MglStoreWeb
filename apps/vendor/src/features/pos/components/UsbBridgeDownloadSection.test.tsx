@@ -2,10 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RegisterConfig } from "@mgl/types";
-import { UsbBridgeDownloadSection } from "./UsbBridgeDownloadSection";
+import { USB_BRIDGE_INSTALLER_URL, UsbBridgeDownloadSection } from "./UsbBridgeDownloadSection";
 
-const installerUrl =
-  "https://github.com/HPlaptopuserr/MglStoreWeb/releases/download/pax-a35-bridge-20261124-cancel/MGL-POS-Bridge-android-pgw-Installer.exe";
+const installerUrl = USB_BRIDGE_INSTALLER_URL;
 const usbRegister: RegisterConfig = {
   id: "usb-till",
   mode: "RETAIL",
@@ -50,6 +49,7 @@ function render(
 }
 
 test("an enabled USB till renders the Windows installer and installation steps without device credentials", () => {
+  assert.ok(installerUrl);
   const html = render([usbRegister]);
   assert.match(html, /Bridge татах/);
   assert.match(html, /Касс 1/);

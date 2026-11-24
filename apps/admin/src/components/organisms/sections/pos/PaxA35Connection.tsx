@@ -299,7 +299,7 @@ export function PaxA35Connection({
                 </p>
               </div>
               <a
-                href="https://github.com/HPlaptopuserr/MglStoreWeb/releases/download/pax-a35-bridge-20261124-cancel/MGL-POS-Bridge-android-pgw-Installer.exe"
+                href="https://github.com/HPlaptopuserr/MglStoreWeb/releases/download/pax-a35-bridge-20261124-upgrade/MGL-POS-Bridge-android-pgw-Installer.exe"
                 className={`${button} border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100`}
               >
                 <Download size={14} aria-hidden="true" /> Windows суулгагч татах

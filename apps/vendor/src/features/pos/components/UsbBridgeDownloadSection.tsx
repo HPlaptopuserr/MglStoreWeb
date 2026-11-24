@@ -4,7 +4,7 @@ import { effectiveCardProvider } from "../utils/card-register-provider";
 
 // This Windows release passed packaging, runtime and checksum verification.
 export const USB_BRIDGE_INSTALLER_URL: string | null =
-  "https://github.com/HPlaptopuserr/MglStoreWeb/releases/download/pax-a35-bridge-20261124-cancel/MGL-POS-Bridge-android-pgw-Installer.exe";
+  "https://github.com/HPlaptopuserr/MglStoreWeb/releases/download/pax-a35-bridge-20261124-upgrade/MGL-POS-Bridge-android-pgw-Installer.exe";
 
 type UsbBridgeDownloadSectionProps = {
   organizationId: string;
