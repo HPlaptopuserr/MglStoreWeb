@@ -134,12 +134,47 @@ export function IncomingWarehouseDispatches({
     }
   };
 
+  const cancel = async (id: string, reason: string) => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setAcceptingId(id);
+    setError("");
+    setSuccess("");
+    try {
+      const cancelled = await readResponse<WarehouseDispatchDocument>(
+        await authFetch(
+          `${API}/vendor/manual-dispatches/${encodeURIComponent(id)}/cancel`,
+          {
+            method: "POST",
+            body: JSON.stringify({ organizationId, reason }),
+          },
+        ),
+      );
+      setDocuments((current) =>
+        current.map((document) => (document.id === id ? cancelled : document)),
+      );
+      setSuccess(
+        "Падаан цуцлагдаж, барааны үлдэгдлийг агуулахад буцаан бүртгэлээ.",
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Падаан цуцалж чадсангүй.",
+      );
+    } finally {
+      submittingRef.current = false;
+      setAcceptingId("");
+    }
+  };
+
   if (!organizationId) return null;
   const pending = documents.filter(
     (document) => document.receiptStatus === "PENDING",
   );
   const accepted = documents.filter(
     (document) => document.receiptStatus === "ACCEPTED",
+  );
+  const cancelled = documents.filter(
+    (document) => document.receiptStatus === "CANCELLED",
   );
   return (
     <section
@@ -215,6 +250,7 @@ export function IncomingWarehouseDispatches({
             document={document}
             submitting={Boolean(acceptingId)}
             onAccept={(prices) => void accept(document.id, prices)}
+            onCancel={(reason) => void cancel(document.id, reason)}
           />
         ))}
       {!loading && accepted.length > 0 && (
@@ -232,6 +268,23 @@ export function IncomingWarehouseDispatches({
                 onSavePrices={(prices) =>
                   void accept(document.id, prices, true)
                 }
+              />
+            ))}
+          </div>
+        </details>
+      )}
+      {!loading && cancelled.length > 0 && (
+        <details className="rounded-xl border border-slate-200 bg-white p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+            Энэ хуудсан дахь цуцалсан падаан ({cancelled.length})
+          </summary>
+          <div className="mt-4 space-y-4">
+            {cancelled.map((document) => (
+              <IncomingDispatchReview
+                key={document.id}
+                document={document}
+                submitting={Boolean(acceptingId)}
+                onAccept={() => {}}
               />
             ))}
           </div>

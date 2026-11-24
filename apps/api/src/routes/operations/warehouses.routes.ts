@@ -2974,7 +2974,7 @@ router.get("/inventory-ledger", requireAuth, async (req, res) => {
         select: { id: true, receiptNumber: true },
       }),
       prisma.warehouseManualDispatch.findMany({
-        where: { id: { in: referenceIds(["WAREHOUSE_MANUAL_DISPATCH"]) } },
+        where: { id: { in: referenceIds(["WAREHOUSE_MANUAL_DISPATCH", "WAREHOUSE_MANUAL_DISPATCH_CANCEL"]) } },
         select: { id: true, dispatchNumber: true },
       }),
       prisma.warehouseStockRequest.findMany({

@@ -2295,6 +2295,9 @@ enum WarehouseDispatchPaymentMethod {
 /// A transactional, operator-created dispatch to an arbitrary destination.
 /// Unlike StockDispatch this does not require a vendor stock request.
 model WarehouseManualDispatch {
+  cancelledAt DateTime?
+  cancelledById String?
+  cancellationReason String?
   recipientOrganizationId String?
   acceptedAt DateTime?
   acceptedById String?

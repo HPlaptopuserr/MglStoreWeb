@@ -14,6 +14,7 @@ import {
   searchDispatchVendors,
   listVendorManualDispatches,
   acceptVendorManualDispatch,
+  cancelVendorManualDispatch,
   updateVendorDispatchSalePrices,
   getManualDispatch,
   listManualDispatches,
@@ -132,6 +133,20 @@ router.patch(
         String(req.params.id),
         req.body?.organizationId,
         req.body?.salePrices,
+      ),
+    ),
+  ),
+);
+router.post(
+  "/vendor/manual-dispatches/:id/cancel",
+  requireAuth,
+  handle(async (req, res) =>
+    res.json(
+      await cancelVendorManualDispatch(
+        actor(req),
+        String(req.params.id),
+        req.body?.organizationId,
+        req.body?.reason,
       ),
     ),
   ),

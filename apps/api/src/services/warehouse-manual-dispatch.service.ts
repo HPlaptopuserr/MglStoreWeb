@@ -47,11 +47,15 @@ function serialize(record: DispatchRecord): WarehouseDispatchDocument {
     id: record.id,
     dispatchNumber: record.dispatchNumber,
     recipientOrganizationId: record.recipientOrganizationId,
-    receiptStatus: record.recipientOrganizationId
-      ? record.acceptedAt
-        ? "ACCEPTED"
-        : "PENDING"
-      : null,
+    cancelledAt: record.cancelledAt?.toISOString() ?? null,
+    cancellationReason: record.cancellationReason,
+    receiptStatus: record.cancelledAt
+      ? "CANCELLED"
+      : record.recipientOrganizationId
+        ? record.acceptedAt
+          ? "ACCEPTED"
+          : "PENDING"
+        : null,
     acceptedAt: record.acceptedAt?.toISOString() ?? null,
     storeName: record.storeName,
     recipientName: record.recipientName,
@@ -651,6 +655,11 @@ export async function acceptVendorManualDispatch(
         include: documentInclude,
       });
       if (!dispatch) throw new ManualDispatchError("Падан олдсонгүй.", 404);
+      if (dispatch.cancelledAt)
+        throw new ManualDispatchError(
+          "Цуцалсан падааныг хүлээн авах боломжгүй.",
+          409,
+        );
       if (dispatch.acceptedAt) return vendorDocument(tx, dispatch);
       const prices = parseSalePrices(
         salePrices,
@@ -749,6 +758,72 @@ export async function acceptVendorManualDispatch(
         include: documentInclude,
       });
       return vendorDocument(tx, accepted);
+    },
+    { timeout: 30000, maxWait: 10000 },
+  );
+}
+
+export async function cancelVendorManualDispatch(
+  actor: Actor,
+  id: string,
+  organizationId: unknown,
+  reason: unknown,
+): Promise<WarehouseDispatchDocument> {
+  if (
+    typeof reason !== "string" ||
+    !reason.trim() ||
+    reason.trim().length > 500
+  )
+    throw new ManualDispatchError(
+      "Цуцлах шалтгааныг 1–500 тэмдэгтээр оруулна уу.",
+    );
+  return prisma.$transaction(
+    async (tx) => {
+      const recipientOrganizationId = await assertRecipientOwner(
+        tx,
+        actor,
+        organizationId,
+      );
+      // Use the same locks as acceptance so only one terminal state can win.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${recipientOrganizationId}))`;
+      await lockOrganizationInventory(tx, recipientOrganizationId);
+      await tx.$queryRaw`SELECT "id" FROM "WarehouseManualDispatch" WHERE "id" = ${id} AND "recipientOrganizationId" = ${recipientOrganizationId} FOR UPDATE`;
+      const dispatch = await tx.warehouseManualDispatch.findFirst({
+        where: { id, recipientOrganizationId },
+        include: documentInclude,
+      });
+      if (!dispatch) throw new ManualDispatchError("Падан олдсонгүй.", 404);
+      if (dispatch.cancelledAt) return serialize(dispatch);
+      if (dispatch.acceptedAt)
+        throw new ManualDispatchError(
+          "Хүлээн авсан падааныг цуцлах боломжгүй.",
+          409,
+        );
+      for (const item of [...dispatch.items].sort((a, b) =>
+        a.productId.localeCompare(b.productId),
+      )) {
+        await adjustStock(tx, {
+          productId: item.productId,
+          warehouseId: dispatch.warehouseId,
+          change: item.quantity,
+          reason: InventoryReason.MANUAL_ADJUST,
+          note: `${dispatch.dispatchNumber} · Цуцалсан: ${reason.trim()}`,
+          createdById: actor.userId,
+          referenceId: dispatch.id,
+          referenceType: "WAREHOUSE_MANUAL_DISPATCH_CANCEL",
+        });
+      }
+      return serialize(
+        await tx.warehouseManualDispatch.update({
+          where: { id },
+          data: {
+            cancelledAt: new Date(),
+            cancelledById: actor.userId,
+            cancellationReason: reason.trim(),
+          },
+          include: documentInclude,
+        }),
+      );
     },
     { timeout: 30000, maxWait: 10000 },
   );

@@ -9,6 +9,20 @@ export function DispatchReceiptStatus({
   detailed?: boolean;
 }) {
   if (!document.recipientOrganizationId) return null;
+  if (document.receiptStatus === "CANCELLED")
+    return (
+      <div className="rounded-lg bg-rose-50 px-3 py-2 text-xs leading-5 text-rose-800">
+        <p className="font-semibold">Дэлгүүр падааныг цуцалсан</p>
+        {detailed && (
+          <p className="mt-1">
+            Үлдэгдлийг агуулахад буцаан бүртгэсэн. {document.cancellationReason}
+            {document.cancelledAt
+              ? ` · ${dispatchDate(document.cancelledAt)}`
+              : ""}
+          </p>
+        )}
+      </div>
+    );
   const accepted = document.receiptStatus === "ACCEPTED";
   return (
     <div

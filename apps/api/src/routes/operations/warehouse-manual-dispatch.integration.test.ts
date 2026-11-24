@@ -357,6 +357,165 @@ test(
         },
       );
       await t.test(
+        "recipient cancellation is authorized, atomic and idempotent",
+        async () => {
+          const organization = await prisma.organization.create({
+            data: {
+              name: `cancel-${marker}`,
+              slug: `cancel-${marker}`,
+              taxId: `cancel-${marker}`,
+              members: { create: { userId: viewer, role: "OWNER" } },
+            },
+          });
+          const organizationId = organization.id;
+          const ids: string[] = [];
+          try {
+            const before = await stock(products[0]);
+            const create = async () => {
+              const response = await call(base, operator, {
+                requestId: randomUUID(),
+                recipientOrganizationId: organizationId,
+                paymentStatus: "CREDIT",
+                items: [{ productId: products[0], quantity: 2 }],
+              });
+              assert.equal(response.status, 201, await response.clone().text());
+              const result =
+                (await response.json()) as WarehouseDispatchDocument;
+              ids.push(result.id);
+              return result;
+            };
+            const pending = await create();
+            const path = `/vendor/manual-dispatches/${pending.id}/cancel`;
+            const body = { organizationId, reason: "Тоо хэмжээ зөрсөн" };
+            assert.equal((await call(path, undefined, body)).status, 401);
+            assert.equal((await call(path, outsider, body)).status, 403);
+            assert.equal((await call(path, operator, body)).status, 403);
+            assert.equal(
+              (await call(path, viewer, { ...body, organizationId: "other" }))
+                .status,
+              403,
+            );
+            assert.equal(
+              (await call(path, viewer, { ...body, reason: " " })).status,
+              400,
+            );
+            assert.equal(
+              (await call(path, viewer, { ...body, reason: "x".repeat(501) }))
+                .status,
+              400,
+            );
+            assert.equal(
+              (
+                await call(
+                  "/vendor/manual-dispatches/missing/cancel",
+                  viewer,
+                  body,
+                )
+              ).status,
+              404,
+            );
+            assert.equal(await stock(products[0]), before - 2);
+            const replies = await Promise.all(
+              Array.from({ length: 5 }, () => call(path, viewer, body)),
+            );
+            for (const reply of replies) {
+              assert.equal(reply.status, 200, await reply.clone().text());
+              const result = (await reply.json()) as WarehouseDispatchDocument;
+              assert.equal(result.receiptStatus, "CANCELLED");
+              assert.equal(result.cancellationReason, body.reason);
+              assert.ok(result.cancelledAt);
+            }
+            assert.equal(await stock(products[0]), before);
+            assert.equal(
+              (
+                await prisma.product.findUniqueOrThrow({
+                  where: { id: products[0] },
+                })
+              ).stock,
+              before,
+            );
+            assert.equal(
+              await prisma.inventoryLedger.count({
+                where: {
+                  referenceId: pending.id,
+                  referenceType: "WAREHOUSE_MANUAL_DISPATCH_CANCEL",
+                },
+              }),
+              1,
+            );
+            assert.equal(
+              await prisma.product.count({ where: { organizationId } }),
+              0,
+            );
+            const saved =
+              await prisma.warehouseManualDispatch.findUniqueOrThrow({
+                where: { id: pending.id },
+              });
+            assert.equal(saved.cancelledById, viewer);
+            assert.equal(saved.acceptedAt, null);
+            assert.equal(
+              (
+                await call(
+                  `/vendor/manual-dispatches/${pending.id}/accept`,
+                  viewer,
+                  { organizationId },
+                )
+              ).status,
+              409,
+            );
+            const history = await call(
+              `/vendor/manual-dispatches?organizationId=${organizationId}`,
+              viewer,
+            );
+            assert.equal(history.status, 200);
+            assert.equal(
+              ((await history.json()) as WarehouseDispatchHistory).items[0]
+                .receiptStatus,
+              "CANCELLED",
+            );
+            const warehouseDocument = await call(
+              `${base}/${pending.id}`,
+              operator,
+            );
+            assert.equal(
+              ((await warehouseDocument.json()) as WarehouseDispatchDocument)
+                .receiptStatus,
+              "CANCELLED",
+            );
+            const accepted = await create();
+            await prisma.warehouseManualDispatch.update({
+              where: { id: accepted.id },
+              data: { acceptedAt: new Date(), acceptedById: viewer },
+            });
+            assert.equal(
+              (
+                await call(
+                  `/vendor/manual-dispatches/${accepted.id}/cancel`,
+                  viewer,
+                  body,
+                )
+              ).status,
+              409,
+            );
+            assert.equal(await stock(products[0]), before - 2);
+          } finally {
+            await prisma.inventoryLedger.deleteMany({
+              where: { referenceId: { in: ids } },
+            });
+            await prisma.warehouseManualDispatchItem.deleteMany({
+              where: { dispatchId: { in: ids } },
+            });
+            await prisma.warehouseManualDispatch.deleteMany({
+              where: { id: { in: ids } },
+            });
+            await prisma.organizationMember.deleteMany({
+              where: { organizationId },
+            });
+            await prisma.organization.delete({ where: { id: organizationId } });
+          }
+        },
+      );
+      await t.test(
         "manual dispatch preserves wholesale and retail reservations under concurrent requests",
         async () => {
           const organization = await prisma.organization.create({

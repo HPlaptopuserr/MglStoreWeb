@@ -10,7 +10,9 @@ export interface WarehouseDispatchDocument {
   id: string;
   dispatchNumber: string;
   recipientOrganizationId?: string | null;
-  receiptStatus?: "PENDING" | "ACCEPTED" | null;
+  receiptStatus?: "PENDING" | "ACCEPTED" | "CANCELLED" | null;
+  cancelledAt?: string | null;
+  cancellationReason?: string | null;
   acceptedAt?: string | null;
   storeName: string | null;
   recipientName: string | null;

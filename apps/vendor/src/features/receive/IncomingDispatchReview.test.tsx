@@ -120,3 +120,40 @@ test("accepted padan allows sale price correction without receiving stock again"
   assert.match(html, /Зарах үнэ хадгалах/);
   assert.doesNotMatch(html, /type="checkbox"/);
 });
+
+test("pending padan offers cancellation without requiring valid prices or receipt review", () => {
+  const html = renderToStaticMarkup(
+    <IncomingDispatchReview
+      document={document}
+      submitting={false}
+      onAccept={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  assert.match(html, /Падаан цуцлах/);
+  assert.match(
+    html,
+    /<button type="button" class="[^"]*">Падаан цуцлах<\/button>/,
+  );
+});
+
+test("cancelled padan shows the reason and disables receipt and price controls", () => {
+  const html = renderToStaticMarkup(
+    <IncomingDispatchReview
+      document={{
+        ...document,
+        receiptStatus: "CANCELLED",
+        cancellationReason: "Буруу падаан",
+      }}
+      submitting={false}
+      onAccept={() => {}}
+      onCancel={() => {}}
+    />,
+  );
+  assert.match(html, /Буруу падаан/);
+  assert.match(html, /агуулахад буцаан бүртгэсэн/);
+  assert.doesNotMatch(html, /type="checkbox"/);
+  assert.doesNotMatch(html, /Падаан цуцлах/);
+  assert.doesNotMatch(html, /Зөвшөөрч, бүтээгдэхүүнд бүртгэх/);
+  assert.doesNotMatch(html, /Нэгдсэн нэмэгдэл/);
+});

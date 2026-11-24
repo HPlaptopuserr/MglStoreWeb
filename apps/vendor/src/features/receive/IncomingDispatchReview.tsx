@@ -17,15 +17,20 @@ export function IncomingDispatchReview({
   submitting,
   onAccept,
   onSavePrices,
+  onCancel,
 }: {
   document: WarehouseDispatchDocument;
   submitting: boolean;
   onAccept: (prices: Array<{ itemId: string; salePrice: string }>) => void;
+  onCancel?: (reason: string) => void;
   onSavePrices?: (prices: Array<{ itemId: string; salePrice: string }>) => void;
 }) {
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
   const [reviewed, setReviewed] = useState(false);
   const [markup, setMarkup] = useState("");
   const calculatedPrices = calculateDispatchSalePrices(document.items, markup);
+  const cancelled = document.receiptStatus === "CANCELLED";
   const accepted = document.receiptStatus === "ACCEPTED";
   const [salePrices, setSalePrices] = useState<Record<string, string>>(() =>
     Object.fromEntries(
@@ -61,9 +66,13 @@ export function IncomingDispatchReview({
           </p>
         </div>
         <span
-          className={`rounded-full px-3 py-1 text-xs font-bold ${accepted ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}
+          className={`rounded-full px-3 py-1 text-xs font-bold ${cancelled ? "bg-rose-50 text-rose-700" : accepted ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}
         >
-          {accepted ? "Хүлээн авсан" : "Тулгаж зөвшөөрөх"}
+          {cancelled
+            ? "Цуцалсан"
+            : accepted
+              ? "Хүлээн авсан"
+              : "Тулгаж зөвшөөрөх"}
         </span>
       </div>
       <div className="grid gap-2 p-4 text-sm text-slate-600 sm:grid-cols-2 sm:px-5">
@@ -84,7 +93,7 @@ export function IncomingDispatchReview({
           <p className="sm:col-span-2">Тэмдэглэл: {document.note}</p>
         )}
       </div>
-      {!accepted && (
+      {!accepted && !cancelled && (
         <fieldset
           disabled={submitting}
           className="mx-4 mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-cyan-100 bg-cyan-50/50 p-3 sm:mx-5"
@@ -185,7 +194,7 @@ export function IncomingDispatchReview({
                     type="text"
                     inputMode="decimal"
                     placeholder="Үнэ оруулах"
-                    disabled={submitting}
+                    disabled={submitting || cancelled}
                     value={salePrices[item.id] ?? ""}
                     onChange={(event) => {
                       setReviewed(false);
@@ -233,13 +242,25 @@ export function IncomingDispatchReview({
             {submitting ? "Хадгалж байна…" : "Зарах үнэ хадгалах"}
           </button>
         )}
-        {!validPrices && (
+        {!cancelled && !validPrices && (
           <p className="text-sm text-amber-800">
             Бараа бүрийн зарах үнийг тэгээс их, 1,000,000,000₮-өөс хэтрэхгүй
             дүнгээр оруулна уу.
           </p>
         )}
-        {accepted ? (
+        {cancelled ? (
+          <div
+            role="status"
+            className="rounded-xl bg-rose-50 p-3 text-sm text-rose-800"
+          >
+            <p>
+              Падаан цуцлагдаж, барааны үлдэгдлийг агуулахад буцаан бүртгэсэн.
+            </p>
+            {document.cancellationReason && (
+              <p className="mt-1">Шалтгаан: {document.cancellationReason}</p>
+            )}
+          </div>
+        ) : accepted ? (
           <div
             role="status"
             className="flex items-start gap-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800"
@@ -270,9 +291,60 @@ export function IncomingDispatchReview({
               нэмэгдэнэ. Зөрүүтэй бол зөвшөөрөхөөс өмнө агуулахтай холбогдоно
               уу.
             </p>
+            {onCancel &&
+              (cancelling ? (
+                <div className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 p-3">
+                  <label
+                    htmlFor={`cancel-${document.id}`}
+                    className="block text-sm font-semibold text-rose-900"
+                  >
+                    Цуцлах шалтгаан
+                  </label>
+                  <textarea
+                    id={`cancel-${document.id}`}
+                    value={cancelReason}
+                    onChange={(event) => setCancelReason(event.target.value)}
+                    maxLength={500}
+                    disabled={submitting}
+                    className="min-h-20 w-full rounded-lg border border-rose-200 bg-white p-2 text-sm"
+                  />
+                  <p className="text-sm text-rose-800">
+                    Цуцлахад барааны үлдэгдлийг агуулахад буцаан бүртгэнэ.
+                    Төлбөр төлсөн бол буцаан олголтыг агуулахтай тусад нь
+                    тохиролцоно уу.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={submitting || !cancelReason.trim()}
+                      onClick={() => onCancel(cancelReason.trim())}
+                      className="min-h-11 rounded-xl bg-rose-700 px-4 text-sm font-bold text-white disabled:opacity-50"
+                    >
+                      {submitting ? "Цуцалж байна…" : "Падаан цуцлахыг батлах"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => setCancelling(false)}
+                      className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold disabled:opacity-50"
+                    >
+                      Болих
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => setCancelling(true)}
+                  className="mr-3 min-h-11 rounded-xl border border-rose-200 px-4 text-sm font-semibold text-rose-700 disabled:opacity-50"
+                >
+                  Падаан цуцлах
+                </button>
+              ))}
             <button
               type="button"
-              disabled={!reviewed || submitting || !validPrices}
+              disabled={cancelling || !reviewed || submitting || !validPrices}
               onClick={() => onAccept(prices)}
               className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-2 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >

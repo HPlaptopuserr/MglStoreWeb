@@ -817,7 +817,7 @@ router.get("/warehouse-movement-documents", requireAuth, async (req, res) => {
         vehicleNumber: null,
         operatorName:
           dispatch.createdBy.profile?.fullName || dispatch.createdBy.email,
-        status: "CONFIRMED",
+        status: dispatch.cancelledAt ? "CANCELLED" : "CONFIRMED",
         occurredAt: dispatch.createdAt,
         items: dispatch.items.map((item) => ({
           id: item.id,
