@@ -10,6 +10,7 @@ import salesRouter, { executePosSale } from "../routes/operations/pos/sales.rout
 import { JWT_SECRET, type AuthUser, type CreateSaleBody } from "../routes/operations/pos/_shared";
 import { encodeSystemQrMerchantAuth } from "./systemqr-merchant-auth";
 import { processPosQrInvoiceLifecycle } from "./pos-qpay-lifecycle";
+import { reconcilePosQrPayment } from "./pos-qpay-reconciliation";
 import { loadUnsettledShiftPayments } from "../routes/operations/pos/unsettled-shift-payments";
 
 const database = new URL(process.env.DATABASE_URL || "http://disabled");
@@ -40,7 +41,8 @@ test("durable QR lifecycle completes offline baskets once and keeps uncertain pa
     if (url.startsWith("http://127.0.0.1:")) return originalFetch(input, init);
     requests.push(url);
     if (url.endsWith("/login")) return Response.json({ status: "000", entity: "lifecycle-test-token" });
-    assert.ok(url.endsWith("/checkInvoice"), "automatic recovery must never create, refund or cancel a bank charge");
+    if (url.endsWith("/cancelQr")) return Response.json({ status: "000" });
+    assert.ok(url.endsWith("/checkInvoice"), "automatic recovery must never create or refund a bank charge");
     if (unavailable) throw new Error("Bank offline");
     const request: unknown = JSON.parse(String(init?.body));
     assert.ok(request && typeof request === "object" && "invoiceNumber" in request);
@@ -187,7 +189,7 @@ test("durable QR lifecycle completes offline baskets once and keeps uncertain pa
       assert.equal(await stock(f.product.id), 5);
       assert.deepEqual(await loadUnsettledShiftPayments(prisma, { ...f.shift, registerId: f.register.id }), { cardCount: 0, qrCount: 0 });
       bankStates.set(f.invoice.id, "PAID");
-      await processPosQrInvoiceLifecycle(f.invoice.id);
+      await reconcilePosQrPayment({ ...invoice, register: f.register }, { event: "authenticated-late-payment" });
       invoice = await prisma.qPayInvoice.findUniqueOrThrow({ where: { id: f.invoice.id } });
       assert.equal(invoice.status, "PAID");
       assert.deepEqual(await loadUnsettledShiftPayments(prisma, { ...f.shift, registerId: f.register.id }), { cardCount: 0, qrCount: 1 });

@@ -304,7 +304,7 @@ export async function releaseResolvedCheckoutReservation(
   tx: Prisma.TransactionClient,
   organizationId: string,
   clientSaleId: string,
-): Promise<void> {
+): Promise<number> {
   await lockOrganizationInventory(tx, organizationId);
   const cards = await tx.cardPaymentAttempt.count({ where: {
     organizationId, consumedAt: null, status: { in: ["PENDING", "APPROVED", "FAILED"] },
@@ -319,7 +319,9 @@ export async function releaseResolvedCheckoutReservation(
     return invoice.status === "PAID" || !payload || typeof payload !== "object" ||
       Array.isArray(payload) || !isQrCancellationConfirmed(payload);
   });
-  if (!cards && !unresolvedQr) await tx.posCardStockReservation.deleteMany({ where: { organizationId, clientSaleId } });
+  if (cards || unresolvedQr) return 0;
+  const released = await tx.posCardStockReservation.deleteMany({ where: { organizationId, clientSaleId } });
+  return released.count;
 }
 
 export function isQrCancellationConfirmed(payload: Prisma.JsonValue): boolean {

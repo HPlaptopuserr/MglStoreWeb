@@ -1,5 +1,6 @@
 import { AuditAction, PosQPayStatus, prisma, type Prisma } from "@mgl/database";
 import { calculatePosLineAmounts } from "@mgl/types";
+import { cancelVerifiedUnpaidExpiredQr } from "./pos-expired-qr-cancellation";
 import { checkoutFromPayload } from "./pos-card-checkout";
 import { reconcilePosQrPayment } from "./pos-qpay-reconciliation";
 import { executePosSale } from "../routes/operations/pos/sales.routes";
@@ -144,7 +145,9 @@ export function processPosQrInvoiceLifecycle(invoiceId: string): Promise<void> {
     if (invoice.status !== PosQPayStatus.PAID) {
       const result = await reconcilePosQrPayment(invoice);
       if (result.state === "UNPAID" && invoice.expiresAt <= new Date()) {
-        await retainVerifiedUnpaidInvoice(invoice, new Date()); return;
+        await retainVerifiedUnpaidInvoice(invoice, new Date());
+        await cancelVerifiedUnpaidExpiredQr(invoice);
+        return;
       }
       if (result.state !== "PAID") {
         await recordLifecycleCheck(invoice.id, { lastLifecycleCheckAt: new Date().toISOString() }); return;

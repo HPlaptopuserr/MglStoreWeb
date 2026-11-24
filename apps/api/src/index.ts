@@ -1,4 +1,5 @@
 import { reconcilePendingPosQrPayments } from "./services/pos-qpay-lifecycle";
+import { reconcileResolvedPosReservations } from "./services/pos-reservation-reconciliation";
 import borrowerCreditAccountRoutes from "./routes/operations/pos/borrower-credit-account.routes";
 import warehouseViewerRoutes from "./routes/operations/warehouse-viewer.routes";
 import reelUploadRoutes from "./routes/content/reel-uploads.routes";
@@ -374,6 +375,17 @@ const qrReconciliationTimer = setInterval(() => {
     .finally(() => { qrReconciliationRunning = false; });
 }, 15_000);
 qrReconciliationTimer.unref();
+
+let reservationReconciliationRunning = false;
+const reservationReconciliationTimer = setInterval(() => {
+  if (reservationReconciliationRunning) return;
+  reservationReconciliationRunning = true;
+  void reconcileResolvedPosReservations()
+    .catch(() => console.error("[pos stock] Reservation reconciliation unavailable"))
+    .finally(() => { reservationReconciliationRunning = false; });
+}, 15_000);
+reservationReconciliationTimer.unref();
+console.info("[pos stock] Reservation reconciliation enabled", { intervalMs: 15_000, batchSize: 25 });
 
 
 startReelUploadWorker();

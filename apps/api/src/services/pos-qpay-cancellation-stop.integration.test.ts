@@ -48,10 +48,12 @@ test("confirmed bank cancellation stops worker, status and retry observation whi
     // A scheduler can legitimately process fixtures belonging to other stores.
     // Count only this store's provider calls so the regression is suite-safe.
     if (url.endsWith("/login")) {
-      if (request.username === "cancel-stop") bankCalls += 1;
+      // Credentials may be shared by unrelated fixtures; count invoice checks
+      // by merchant below, rather than attributing their login to this store.
       return Response.json({ status: "000", entity: "cancel-test-token" });
     }
-    assert.ok(url.endsWith("/checkInvoice"), "cancelled observations must not create or cancel another bank request");
+    if (url.endsWith("/cancelQr")) return Response.json({ status: "000" });
+    assert.ok(url.endsWith("/checkInvoice"), "cancelled observations must not create another bank request");
     if (request.merchantCode === token) bankCalls += 1;
     const run = request.merchantCode === token ? duringCheck : null;
     if (run) { duringCheck = null; await run(); }
@@ -119,14 +121,14 @@ test("confirmed bank cancellation stops worker, status and retry observation whi
       assert.equal(current.status, "PAID"); assert.equal(current.paymentId, `systemqr-${f.invoice.id}`); assert.ok(current.paidAt);
       assert.equal((current.webhookPayload as Prisma.JsonObject).providerCancellationConfirmed, true);
     });
-    await t.test("local expiry without cancellation proof continues bank reconciliation", async () => {
+    await t.test("local expiry is reconciled and bank cancellation is confirmed automatically", async () => {
       const f = await fixture(false);
       const before = bankCalls;
       await processPosQrInvoiceLifecycle(f.invoice.id);
       assert.ok(bankCalls > before);
       const current = await prisma.qPayInvoice.findUniqueOrThrow({ where: { id: f.invoice.id } });
       assert.ok((current.webhookPayload as Prisma.JsonObject).paymentLifecycleReview);
-      assert.equal((current.webhookPayload as Prisma.JsonObject).providerCancellationConfirmed, false);
+      assert.equal((current.webhookPayload as Prisma.JsonObject).providerCancellationConfirmed, true);
     });
   } finally {
     globalThis.fetch = originalFetch;
