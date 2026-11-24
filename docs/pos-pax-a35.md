@@ -14,7 +14,7 @@ The user flow is **Нэмэлт хэсэг → Vendor & POS (Section 05) → Ven
 PAX A35 холбох**. This stays inside the existing per-register RETAIL list.
 
 1. On an active, approved Vendor till, generate and copy the connection link.
-2. On the cashier PC, open the installed Desktop icon **PAX A35 холбох**.
+2. On the cashier PC, open the installed Desktop icon **PAX A35 Connect**.
 3. Paste the link once. The bridge receives its configuration and restarts.
 4. Check **Холбогдсон** in Admin. Plug the A35 USB cable into that PC and install
    the bank's required PGW/USB driver first. A first-time bridge installation also

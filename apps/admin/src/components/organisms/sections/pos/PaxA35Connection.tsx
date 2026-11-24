@@ -299,7 +299,7 @@ export function PaxA35Connection({
                 </p>
               </div>
               <a
-                href="https://github.com/HPlaptopuserr/MglStoreWeb/releases/download/pax-a35-bridge-20261121/MGL-POS-Bridge-android-pgw-Installer.exe"
+                href="https://github.com/HPlaptopuserr/MglStoreWeb/releases/download/pax-a35-bridge-20261124/MGL-POS-Bridge-android-pgw-Installer.exe"
                 className={`${button} border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100`}
               >
                 <Download size={14} aria-hidden="true" /> Windows суулгагч татах
@@ -312,7 +312,8 @@ export function PaxA35Connection({
               </li>
               <li>
                 Кассын компьютерийн Desktop дээрх{" "}
-                <strong>«PAX A35 холбох»</strong> дүрсийг нээнэ.
+                <strong>«PAX A35 Connect»</strong> (хуучин хувилбарт «PAX A35 холбох»){" "}
+                дүрсийг нээнэ.
               </li>
               <li>Хуулсан холбоосоо оруулж баталгаажуулна.</li>
               <li>
