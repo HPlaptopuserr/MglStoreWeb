@@ -1,4 +1,4 @@
-export const CLUB_PRESENTATION_VERSION = "84fbe4b9295a";
+export const CLUB_PRESENTATION_VERSION = "5808ae40942e";
 export const CLUB_PRESENTATION_PDF =
   `/mgl-club/mgl-club-introduction.pdf?v=${CLUB_PRESENTATION_VERSION}`;
 
