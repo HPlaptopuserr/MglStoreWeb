@@ -301,3 +301,48 @@ test("conflicting status fields and documented uncertain errors cannot finalize 
     "UNKNOWN",
   );
 });
+
+test("physical cancellation without echoed identity resolves only the exclusive purchase result", async () => {
+  for (const code of [-21, -22]) {
+    const raw = JSON.stringify({ code, desc: "Гүйлгээ цуцлагдсан", terminal: "70012386", rrn: "" });
+    const result = await new AndroidPgwProvider(config, async () => raw).charge({ attemptId: "attempt", amount: 43.68, terminalId: "terminal-1" });
+    assert.equal(result.status, "DECLINED");
+    assert.equal(result.raw, raw);
+    assert.equal(result.data, null);
+    assert.equal((result.parsed as PgwResponse).data, undefined);
+  }
+});
+
+test("physical cancellation cannot override present wrong identity or bank success", async () => {
+  for (const extra of [
+    { data: "other" }, { amount: 123 }, { terminal: "other" }, { rrn: "bank" },
+    { appCode: "approval" }, { status: "APPROVED" }, { success: true },
+    { status: "CANCELLED", approved: true }, { code: -1 },
+    { details: { rrn: "bank" } }, { responseCode: 0 },
+  ]) {
+    const raw = JSON.stringify({ code: -22, desc: "Гүйлгээ цуцлагдсан", ...extra });
+    const result = await new AndroidPgwProvider(config, async () => raw).charge({ attemptId: "attempt", amount: 43.68, terminalId: "70012386" });
+    assert.equal(result.status, "FAILED", raw);
+  }
+});
+
+for (const raw of ['<{code:-22,data:attempt', '{"code":-22,"data":"attempt"', '<{code:-22,data:attempt>']) {
+  test(`incomplete cancellation cannot finalize: ${raw}`, async () => {
+    const result = await new AndroidPgwProvider(config, async () => raw).charge({ attemptId: "attempt", amount: 1, terminalId: "terminal-1" });
+    assert.equal(result.status, "FAILED");
+  });
+}
+
+test("cancellation amount follows configured wire multiplier", async () => {
+  for (const amount of [1, 100]) {
+    const result = await new AndroidPgwProvider({ ...config, amountMultiplier: 1 }, async () => JSON.stringify({ code: -22, amount })).charge({ attemptId: "attempt", amount: 1, terminalId: "terminal-1" });
+    assert.equal(result.status, amount === 1 ? "DECLINED" : "FAILED");
+  }
+});
+
+test("cancellation checks every bank/status alias even when an earlier alias is empty", () => {
+  const cases: PgwResponse[] = [{ rrn: "", invoice: "bank" }, { status: "CANCELLED", approved: true }, { responseCode: 0 }, { details: { rrn: "bank" } }];
+  for (const extra of cases) {
+    assert.equal(classifyPgwResponse({ code: -22, data: "attempt", ...extra }), "UNKNOWN");
+  }
+});

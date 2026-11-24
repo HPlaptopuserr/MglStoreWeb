@@ -23,7 +23,7 @@ import { readBridgeCredentials, writeBridgeState } from "./bridge-pairing";
 import { BridgeHeartbeat, type BridgeHealthSnapshot } from "./bridge-heartbeat";
 import { OperationJournal } from "./operation-journal";
 import type { CardTerminalProvider, ChargeResult, TerminalCommand } from "./providers/provider.interface";
-import { AndroidPgwProvider } from "./providers/android-pgw.provider";
+import { AndroidPgwProvider, normalizeAndroidPgwCancellation } from "./providers/android-pgw.provider";
 import { MockTerminalProvider } from "./providers/mock.provider";
 
 loadBridgeEnv();
@@ -161,7 +161,29 @@ function buildProvider(): CardTerminalProvider {
 const provider = buildProvider();
 const app = express();
 // Outside the installer directory so upgrades cannot delete payment evidence.
-const journal = new OperationJournal(dataDirectory);
+const journal = new OperationJournal(dataDirectory, (id, entry) => {
+  const result = entry.result;
+  if (PROVIDER !== "android-pgw" || !id.startsWith("charge:")) return result;
+  let request: unknown;
+  try { request = JSON.parse(entry.fingerprint); } catch { return result; }
+  if (!request || typeof request !== "object" ||
+      !("attemptId" in request) || typeof request.attemptId !== "string" ||
+      id !== `charge:${request.attemptId}` ||
+      !("amount" in request) || typeof request.amount !== "number" ||
+      !Number.isFinite(request.amount) || request.amount <= 0 ||
+      !("terminalId" in request) || typeof request.terminalId !== "string" ||
+      request.terminalId !== entry.terminalId) return result;
+  return normalizeAndroidPgwCancellation(result, {
+    attemptId: request.attemptId, amount: request.amount, terminalId: request.terminalId,
+  // Historical journals do not record the wire amount multiplier. Any present
+  // terminal amount therefore remains unresolved rather than assuming x100.
+  }, Number.NaN);
+});
+try {
+  journal.recoverStoredOperation();
+} catch {
+  console.warn("[bridge] Stored operation could not be reconciled; terminal reservation retained.");
+}
 let cachedHealth: BridgeHealthSnapshot = { terminalConnected: false, serialPath: null, terminalId: pairedCredentials?.terminalId || null,
   error: "Terminal health has not been checked", hasUnresolvedOperation: false };
 const heartbeat = pairedCredentials ? new BridgeHeartbeat(dataDirectory, pairedCredentials, () => ({ ...cachedHealth,

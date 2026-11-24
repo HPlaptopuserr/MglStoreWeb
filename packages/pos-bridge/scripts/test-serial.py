@@ -63,6 +63,31 @@ def emulate():
                         active = identity
                         purchase_waiting.set()
                         continue
+                    if amount in ('20100', '20200', '20300', '20400'):
+                        # Physical terminal Cancel: unsolicited result on the
+                        # purchase connection, without a vendingCancel command.
+                        os.write(master, command.encode())
+                        code = -21 if amount in ('20100', '20300') else -22
+                        fields = {'code': code, 'desc': 'Гүйлгээ цуцлагдсан'}
+                        if amount == '20400':
+                            fields = {'code': -22, 'desc': 'Гүйлгээ цуцлагдсан', 'terminal': '70012386', 'rrn': ''}
+                        else:
+                            fields['data'] = identity
+                        response = json.dumps(fields, ensure_ascii=False, separators=(',', ':')).encode()
+                        if amount == '20300':
+                            # An incomplete bare JSON reply must survive a gap
+                            # beyond RESPONSE_IDLE_MS, even after code arrives.
+                            split = response.index(b',') + 1
+                            os.write(master, response[:split])
+                            time.sleep(0.35)
+                            response = response[split:]
+                        elif amount != '20400':
+                            response = b'<' + response + b'>'
+                        # Split UTF-8 characters as a real USB read may do.
+                        for offset in range(0, len(response), 7):
+                            os.write(master, response[offset:offset + 7])
+                            time.sleep(0.002)
+                        continue
                     code = '50' if amount == '30000' else '116' if amount == '11600' else '0'
                     response = '<{code:' + code + ',data:' + identity + ',terminal:000001,amount:' + amount + (',rrn:001234567890,appCode:000123' if code == '0' else '') + '}>'
             # Real driver sees an echo and fragmented terminal reply.
@@ -160,6 +185,46 @@ try:
         assert request('/terminal/command', command)[1]['status'] == 'FAILED'
         assert pending.result(timeout=6)[1]['status'] == 'DECLINED'
     print('PASS vendingCancel reaches the open serial purchase and original reply resolves it', flush=True)
+    for amount in (201, 202, 203, 204):
+        physical = {'attemptId': f'physical-cancel-{amount}', 'amount': amount, 'terminalId': 'terminal-1' if amount == 204 else '000001'}
+        cancel_writes = sum('vendingCancel:' in call for call in calls)
+        started_at = time.monotonic()
+        assert request('/charge', physical)[1]['status'] == 'DECLINED'
+        assert time.monotonic() - started_at < 2, 'Confirmed cancel waited for the purchase timeout'
+        assert request('/charge/status', physical)[1]['status'] == 'DECLINED'
+        assert request('/charge', physical)[1]['status'] == 'DECLINED'
+        assert sum(f'data:physical-cancel-{amount}' in call for call in calls) == 1
+        # A late cashier click after physical cancellation must neither send
+        # another serial command nor change the original durable result.
+        stale_cancel = {'operation': 'cancel', 'requestId': f'late-cancel-{amount}',
+                        'terminalId': '000001', 'attemptId': physical['attemptId']}
+        assert request('/terminal/command', stale_cancel)[1]['status'] == 'FAILED'
+        assert sum('vendingCancel:' in call for call in calls) == cancel_writes
+        assert request('/charge/status', physical)[1]['status'] == 'DECLINED'
+    print('PASS physical -21/-22, slow bare JSON, split UTF-8 and actual missing-data cancellation finalize once without a cancel command', flush=True)
+    print('PASS late cashier cancellation cannot overwrite or re-dispatch a confirmed physical cancellation', flush=True)
+    child.terminate()
+    child.wait(timeout=5)
+    legacy = {'attemptId': 'stored-cancel', 'amount': 4368, 'terminalId': 'terminal-1'}
+    legacy_id = 'charge:stored-cancel'
+    legacy_fingerprint = json.dumps(legacy, separators=(',', ':'))
+    legacy_raw = '{"code":-22,"desc":"Гүйлгээ цуцлагдсан","terminal":"70012386","rrn":""}'
+    legacy_file = Path(directory) / (hashlib.sha256(legacy_id.encode()).hexdigest() + '.json')
+    legacy_file.write_text(json.dumps({'fingerprint': legacy_fingerprint, 'terminalId': 'terminal-1',
+        'result': {'status': 'FAILED', 'provider': 'ANDROID_PGW', 'code': '-22', 'raw': legacy_raw,
+                   'parsed': json.loads(legacy_raw), 'message': 'Terminal response does not match this payment'}}))
+    (Path(directory) / 'terminal.lock').write_text(legacy_id)
+    child = start()
+    assert not (Path(directory) / 'terminal.lock').exists(), 'Startup must recover even when API has already finalized the attempt'
+    charge_calls = sum('amount:' in call for call in calls)
+    recovered = request('/charge/status', legacy)[1]
+    assert recovered['status'] == 'DECLINED'
+    assert recovered['raw'] == legacy_raw
+    assert json.loads(legacy_file.read_text())['result']['status'] == 'DECLINED'
+    assert not (Path(directory) / 'terminal.lock').exists()
+    assert request('/charge', legacy)[1]['status'] == 'DECLINED'
+    assert sum('amount:' in call for call in calls) == charge_calls
+    print('PASS old stored FAILED -22 recovers durably after restart without another terminal command', flush=True)
     unknown = {'attemptId': 'unknown-attempt', 'amount': 300, 'terminalId': '000001'}
     assert request('/charge', unknown)[1]['status'] == 'FAILED'
     assert request('/charge', {**unknown, 'attemptId': 'must-not-dispatch'})[0] == 409
@@ -170,7 +235,7 @@ try:
     assert request('/charge', {**unknown, 'attemptId': 'still-must-not-dispatch'})[0] == 409
     assert not any('must-not-dispatch' in command for command in calls)
     print('PASS uncertain terminal error blocks new purchases across restart', flush=True)
-    print('PASS 8 end-to-end groups; synthetic PTY only, no bank or physical terminal', flush=True)
+    print('PASS 11 end-to-end groups; synthetic PTY only, no bank or physical terminal', flush=True)
 finally:
     if child:
         child.terminate()

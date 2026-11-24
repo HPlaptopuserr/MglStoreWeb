@@ -2,7 +2,7 @@ name: PAX A35 Windows bridge prerelease
 
 on:
   push:
-    branches: [codex/pax-a35-windows-20261124]
+    branches: [codex/pax-cancel-20261124]
     paths:
       - packages/pos-bridge/**
       - .github/workflows/pos-bridge-windows.yml
@@ -12,15 +12,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: pax-a35-bridge-20261124
+  group: pax-a35-bridge-20261124-cancel
   cancel-in-progress: false
 
 env:
-  RELEASE_TAG: pax-a35-bridge-20261124
+  RELEASE_TAG: pax-a35-bridge-20261124-cancel
 
 jobs:
   package:
-    if: github.ref == 'refs/heads/codex/pax-a35-windows-20261124'
+    if: github.ref == 'refs/heads/codex/pax-cancel-20261124'
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
@@ -187,7 +187,7 @@ jobs:
             C:\tmp\mgl-pos-bridge-release\RELEASE-NOTES.md
 
   publish:
-    if: github.ref == 'refs/heads/codex/pax-a35-windows-20261124'
+    if: github.ref == 'refs/heads/codex/pax-cancel-20261124'
     needs: package
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -217,7 +217,7 @@ jobs:
           gh release create "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "PAX A35 Windows bridge 2026-11-24" \
+            --title "PAX A35 terminal cancellation fix 2026-11-24" \
             --notes-file RELEASE-NOTES.md \
             --prerelease \
             mgl-pos-bridge-android-pgw.zip \

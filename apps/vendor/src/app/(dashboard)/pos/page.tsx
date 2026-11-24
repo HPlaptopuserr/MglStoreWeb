@@ -17,6 +17,7 @@ import { creditPaymentHistoryReceipt } from "@/features/pos/utils/credit-payment
 import { CreditRepaymentAmountDialog } from "@/features/pos/components/CreditRepaymentAmountDialog";
 
 import { runAndroidPgwCommand } from "@/features/pos/api/android-pgw";
+import { cancelPendingClientBridgePayment, waitForClientBridgePayment } from "@/features/pos/utils/wait-for-client-bridge-payment";
 import { shiftSettlementTerminal, usesPairedAndroidPgwCommands } from "@/features/pos/utils/card-terminal-operations";
 import { readPosFiscalTaxTotals } from "@mgl/types";
 import { PosApiError, posRequest } from "@/features/pos/api/_pos-client";
@@ -27,7 +28,7 @@ import { isDefinitiveQPayCreationFailure, planQPayServerRecovery, qpayCheckoutFi
 import { paymentRequestId } from "@/features/pos/utils/payment-request-id";
 import { clientBridgeFailureResult } from "@/features/pos/api/card-terminal";
 import type { PaymentFeedback } from "@/features/pos/types/payment-status.types";
-import type { VerifiedCardRecovery } from "@mgl/types";
+import type { CardAttempt, VerifiedCardRecovery } from "@mgl/types";
 import type { CustomerDisplayPayload, CustomerDisplaySuccessDetails } from "@/features/pos/types/customer-display.types";
 import type { PosProduct } from "@/features/pos/types/pos.types";
 import { RestockProductDialog } from "@/features/pos/components/RestockProductDialog";
@@ -551,6 +552,7 @@ export default function PosDemoPage() {
   const [isCardProcessing, setIsCardProcessing] = useState(false);
   const [isCancellingCard, setIsCancellingCard] = useState(false);
   const [minuCancellationRequested, setMinuCancellationRequested] = useState(false);
+  const [pgwCancellationMessage, setPgwCancellationMessage] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("Бүгд");
   const [autoCheckoutActive, setAutoCheckoutActive] = useState(false);
   const [autoFinalizing, setAutoFinalizing] = useState(false);
@@ -908,16 +910,33 @@ export default function PosDemoPage() {
 
     if (activeRun.provider === "ANDROID_PGW") {
       setMinuCancellationRequested(true);
-      // Keep the purchase connection and entry alive until its final bank response.
+      clearProgressTicker();
+      // The original purchase stays alive. Request cancellation independently
+      // of its HTTP response and wait for an authenticated terminal decision.
       setIsCancellingCard(true);
+      setPgwCancellationMessage("Цуцлах хүсэлт илгээж байна…");
       try {
         if (registerConfig?.id && usesPairedAndroidPgwCommands(registerConfig) && activeRun.attemptId) {
           const result = await runAndroidPgwCommand({ operation: "cancel", registerId: registerConfig.id, attemptId: activeRun.attemptId });
-          setScanMessage(result.message || "Цуцлалтын эцсийн хариуг хүлээж байна");
-        } else setScanMessage("Терминалын Cancel товчийг дарж эцсийн хариуг хүлээнэ үү");
+          if (cardPaymentRunRef.current !== activeRun) return;
+          const message = result.status === "PENDING"
+            ? "Цуцлах хүсэлт илгээгдлээ. Терминалын эцсийн хариуг хүлээж байна."
+            : result.message || "Цуцлалт баталгаажаагүй. Терминалын Cancel товчийг дарж, төлөвийг шалгана уу.";
+          setPgwCancellationMessage(message);
+          setScanMessage(message);
+        } else {
+          const message = "Терминалын Cancel товчийг дарж эцсийн хариуг хүлээнэ үү.";
+          setPgwCancellationMessage(message);
+          setScanMessage(message);
+        }
       } catch (error: unknown) {
-        setScanMessage(error instanceof Error ? error.message : "Цуцлалт баталгаажаагүй; төлбөрийн төлөвийг шалгана уу");
-      } finally { setIsCancellingCard(false); }
+        if (cardPaymentRunRef.current !== activeRun) return;
+        const message = error instanceof Error ? error.message : "Цуцлалт баталгаажаагүй; төлбөрийн төлөвийг шалгана уу.";
+        setPgwCancellationMessage(message);
+        setScanMessage(message);
+      } finally {
+        if (!cardPaymentRunRef.current || cardPaymentRunRef.current === activeRun) setIsCancellingCard(false);
+      }
       return;
     }
     activeRun.cancelled = true;
@@ -2683,6 +2702,7 @@ export default function PosDemoPage() {
       ]);
 
       setMinuCancellationRequested(false);
+      setPgwCancellationMessage("");
       setCardWaitDeadline(null);
       setIsCardProcessing(true);
       startProgressTicker("Карт уншуулна уу");
@@ -2781,34 +2801,41 @@ export default function PosDemoPage() {
         setPaymentEntries(previous => previous.map(entry => entry.id === pendingId ? { ...entry, attemptId: attempt.attemptId } : entry));
         let approvedAttempt = attempt;
         if (useClientBridge && attempt.status === "PENDING") {
-          try {
-            const bridgeResult = await chargeClientBridge({
-              bridgeUrl: freshRegisterConfig.terminalBridgeUrl!,
-              attemptId: attempt.attemptId,
-              requestSignature: attempt.bridgeRequestSignature,
-              amount: safeAmount,
-              terminalId,
-              signal: cardRun.abortController.signal,
-            });
-            if (isCardRunCancelled()) return;
-            approvedAttempt = await submitClientBridgeResult({
-              cardFlowVersion,
-              attemptId: attempt.attemptId,
-              result: bridgeResult,
-            });
-          } catch (bridgeError: unknown) {
-            if (isCardRunCancelled()) return;
-            const failure = clientBridgeFailureResult(bridgeError);
-            approvedAttempt = await submitClientBridgeResult({
-              cardFlowVersion,
-              attemptId: attempt.attemptId,
-              result: failure,
-            }).catch(() => ({
-              ...attempt,
-              status: "FAILED" as const,
-              message: "Төлбөрийн бүртгэлийн холболт тасарсан. Төлөвийг дахин шалгана уу.",
-            }));
-          }
+          approvedAttempt = await waitForClientBridgePayment({
+            attempt,
+            signal: cardRun.abortController.signal,
+            getStatus: getCardAttemptStatus,
+            charge: async () => {
+              try {
+                const bridgeResult = await chargeClientBridge({
+                  bridgeUrl: freshRegisterConfig.terminalBridgeUrl!,
+                  attemptId: attempt.attemptId,
+                  requestSignature: attempt.bridgeRequestSignature,
+                  amount: safeAmount,
+                  terminalId,
+                  signal: cardRun.abortController.signal,
+                });
+                if (cardRun.abortController.signal.aborted) throw new DOMException("Aborted", "AbortError");
+                return await submitClientBridgeResult({
+                  cardFlowVersion,
+                  attemptId: attempt.attemptId,
+                  result: bridgeResult,
+                });
+              } catch (bridgeError: unknown) {
+                if (cardRun.abortController.signal.aborted) throw bridgeError;
+                const failure = clientBridgeFailureResult(bridgeError);
+                return await submitClientBridgeResult({
+                  cardFlowVersion,
+                  attemptId: attempt.attemptId,
+                  result: failure,
+                }).catch(() => ({
+                  ...attempt,
+                  status: "FAILED" as const,
+                  message: "Төлбөрийн бүртгэлийн холболт тасарсан. Төлөвийг дахин шалгана уу.",
+                }));
+              }
+            },
+          });
         } else if (minuWaitDeadline !== null) {
           approvedAttempt = await waitForMinuCardPayment({
             attempt, deadline: minuWaitDeadline, signal: cardRun.abortController.signal,
@@ -2880,6 +2907,7 @@ export default function PosDemoPage() {
           cardPaymentRunRef.current = null;
           setCardWaitDeadline(null);
           setIsCardProcessing(false);
+          setIsCancellingCard(false);
         }
       }
 
@@ -3162,7 +3190,7 @@ export default function PosDemoPage() {
     })();
   };
 
-  const checkCardPayment = async (id: string, signal?: AbortSignal): Promise<boolean> => {
+  const checkCardPayment = async (id: string, signal?: AbortSignal, observed?: CardAttempt): Promise<boolean> => {
     const entry = paymentEntries.find(item => item.id === id && item.method === "CARD" && item.status === "pending");
     if (!entry?.attemptId) return true;
     if (cardStatusChecksRef.current.has(id) || deferringCheckoutRef.current) return false;
@@ -3170,7 +3198,7 @@ export default function PosDemoPage() {
     cardStatusChecksRef.current.add(id);
     clearPaymentFeedback("CARD");
     try {
-      const attempt = await getCardAttemptStatus(entry.attemptId, signal);
+      const attempt = observed?.attemptId === entry.attemptId ? observed : await getCardAttemptStatus(entry.attemptId, signal);
       if (signal?.aborted || deferringCheckoutRef.current || originalSaleId !== clientSaleIdRef.current) return false;
       setMissingCardAttemptIds(previous => previous.includes(entry.attemptId!) ? previous.filter(attemptId => attemptId !== entry.attemptId) : previous);
       const outcome = cardPaymentOutcome(attempt.status, attempt.message);
@@ -3310,6 +3338,38 @@ export default function PosDemoPage() {
   });
 
   const cancelCheckoutAndClearCart = async () => {
+    // A pending card is a cancellation target, never permission to clear its cart.
+    if (getEffectiveCardProvider(registerConfig) === "ANDROID_PGW" &&
+        (cardPaymentRunRef.current || unresolvedCardPayment)) {
+      if (cardPaymentRunRef.current) { await handleCancelCardPayment(); return; }
+      const entry = paymentEntries.find(item => item.method === "CARD" && item.status === "pending" && item.attemptId);
+      if (!entry?.attemptId || isCancellingCard) return;
+      const saleId = clientSaleIdRef.current;
+      setIsCancellingCard(true);
+      try {
+        const result = await cancelPendingClientBridgePayment({
+          attemptId: entry.attemptId,
+          getStatus: id => getCardAttemptStatus(id, AbortSignal.timeout(8_000)),
+          cancel: async () => {
+            if (registerConfig?.id && usesPairedAndroidPgwCommands(registerConfig)) {
+              await runAndroidPgwCommand({ operation: "cancel", registerId: registerConfig.id, attemptId: entry.attemptId });
+            }
+          },
+        });
+        if (saleId !== clientSaleIdRef.current) return;
+        if (result.status === "APPROVED" || result.status === "DECLINED") {
+          await checkCardPayment(entry.id, undefined, result);
+        } else {
+          setScanStatus("not-found");
+          setScanMessage("Цуцлалт хараахан баталгаажаагүй. Терминалын Cancel товчийг дарж, төлөвөө шалгана уу. Сагсыг хэвээр хадгаллаа.");
+        }
+      } catch (error: unknown) {
+        if (saleId !== clientSaleIdRef.current) return;
+        setScanStatus("not-found");
+        setScanMessage(error instanceof Error ? error.message : "Цуцлалтыг баталгаажуулж чадсангүй. Төлөвөө шалгана уу.");
+      } finally { setIsCancellingCard(false); }
+      return;
+    }
     try { if (await recoverMissingQrBeforeAction()) return; }
     catch (error: unknown) { setScanStatus("not-found"); setScanMessage(error instanceof Error ? error.message : "Өмнөх QR төлбөрийг шалгаж чадсангүй. Сагсыг хэвээр үлдээлээ."); return; }
     if (!cardPaymentRunRef.current && !isCardProcessing && !deferringCheckoutRef.current &&
@@ -4696,6 +4756,10 @@ export default function PosDemoPage() {
             setView("register");
           }}
           onCancelCheckout={cancelCheckoutAndClearCart}
+          pendingCardCancellation={getEffectiveCardProvider(registerConfig) === "ANDROID_PGW" && unresolvedCardPayment}
+          cancelDisabled={getEffectiveCardProvider(registerConfig) === "ANDROID_PGW" && unresolvedCardPayment
+            ? qpayCreating || saleLoading || autoFinalizing || creditRepaymentSubmitting || isCancellingCard
+            : undefined}
           disabled={qpayCreating || saleLoading || autoFinalizing || creditRepaymentSubmitting || state.cart.length === 0 || isCardProcessing || methodSwitch.pending || methodSwitch.resolving}
         />
       )}
@@ -4717,8 +4781,9 @@ export default function PosDemoPage() {
             <p className="mt-4 text-lg font-bold text-slate-900">Картаар төлж байна</p>
             {cardWaitDeadline !== null && <CardPaymentCountdown key={cardWaitDeadline}
               deadline={cardWaitDeadline} className="mt-4 text-blue-600" />}
-            <p role="status" className="mt-1 text-sm text-slate-500">{minuCancellationRequested
-              ? (usesPairedAndroidPgwCommands(registerConfig) ? "Цуцлалтыг хүссэн. Терминалын эцсийн хариуг хүлээж байна." : "Терминалын Cancel товчийг дарна уу. Цуцлалтын хариуг хүлээж байна.")
+            <p role="status" className="mt-1 text-sm text-slate-500">{getEffectiveCardProvider(registerConfig) === "ANDROID_PGW" && pgwCancellationMessage
+              ? pgwCancellationMessage
+              : minuCancellationRequested ? "Терминалын Cancel товчийг дарна уу. Цуцлалтын хариуг хүлээж байна."
               : "Терминал дээр карт уншуулна уу"}</p>
             <button
               type="button"
@@ -4726,7 +4791,7 @@ export default function PosDemoPage() {
                 if (getEffectiveCardProvider(registerConfig) === "MINU_AGENT") setMinuCancellationRequested(true);
                 else void handleCancelCardPayment();
               }}
-              disabled={minuCancellationRequested || isCancellingCard || methodSwitch.pending || methodSwitch.resolving}
+              disabled={isCancellingCard || (getEffectiveCardProvider(registerConfig) !== "ANDROID_PGW" && (minuCancellationRequested || methodSwitch.pending || methodSwitch.resolving))}
               className="mt-6 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
             >
               {isCancellingCard ? <Loader2 size={14} className="animate-spin" /> : null}

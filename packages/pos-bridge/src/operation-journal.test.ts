@@ -130,3 +130,110 @@ test("damaged evidence fails closed without invoking hardware", async () => {
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+for (const foreignLock of [false, true]) {
+  test(`stored cancellation correction persists without dispatch and preserves ${foreignLock ? "another operation's lock" : "restart evidence"}`, async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pgw-journal-recovery-"));
+    try {
+      const original = { status: "FAILED" as const, raw: '{"code":-22}', parsed: { code: -22 } };
+      await new OperationJournal(directory).execute("charge:old", "exact", "terminal", async () => original);
+      const lock = path.join(directory, "terminal.lock");
+      if (foreignLock) fs.writeFileSync(lock, "charge:other");
+      let normalized = 0;
+      const recovered = new OperationJournal(directory, (_id, entry) => {
+        normalized += 1;
+        return { ...entry.result, status: "DECLINED" };
+      });
+      assert.throws(() => recovered.lookup("charge:old", "wrong"), /different parameters/);
+      assert.equal(normalized, 0);
+      const result = await recovered.execute("charge:old", "exact", "terminal", async () => {
+        throw new Error("recovery must never dispatch");
+      });
+      assert.equal(result.status, "DECLINED");
+      assert.equal(result.raw, original.raw);
+      assert.deepEqual(result.parsed, original.parsed);
+      assert.equal(new OperationJournal(directory).lookup("charge:old", "exact")?.status, "DECLINED");
+      if (foreignLock) assert.equal(fs.readFileSync(lock, "utf8"), "charge:other");
+      else {
+        assert.equal(fs.existsSync(lock), false);
+        assert.equal((await recovered.execute("charge:next", "next", "terminal", async () => ({ status: "APPROVED" }))).status, "APPROVED");
+      }
+    } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+  });
+}
+
+test("unknown and active operations cannot be released by stored cancellation correction", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pgw-journal-active-"));
+  try {
+    let normalizations = 0;
+    const journal = new OperationJournal(directory, (_id, entry) => {
+      normalizations += 1;
+      return entry.result;
+    });
+    let release: (() => void) | undefined;
+    const pending = journal.execute("charge:active", "exact", "terminal", async () => {
+      await new Promise<void>(resolve => { release = resolve; });
+      return { status: "FAILED" };
+    });
+    assert.equal(journal.lookup("charge:active", "exact")?.status, "FAILED");
+    assert.equal(normalizations, 0);
+    assert.equal(fs.readFileSync(path.join(directory, "terminal.lock"), "utf8"), "charge:active");
+    release?.(); await pending;
+    assert.equal(journal.lookup("charge:active", "exact")?.status, "FAILED");
+    assert.equal(normalizations, 1);
+    await assert.rejects(journal.execute("charge:new", "new", "terminal", async () => ({ status: "APPROVED" })), /unresolved/);
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+for (const status of ["APPROVED", "DECLINED"] as const) {
+  test(`restart releases only its own durable ${status} reservation after the persist/unlink crash window`, async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pgw-journal-final-"));
+    try {
+      await new OperationJournal(directory).execute("charge:final", "exact", "terminal", async () => ({ status }));
+      const lock = path.join(directory, "terminal.lock");
+      fs.writeFileSync(lock, "charge:final");
+      const restarted = new OperationJournal(directory);
+      assert.throws(() => restarted.lookup("charge:final", "wrong"), /different parameters/);
+      assert.equal(fs.readFileSync(lock, "utf8"), "charge:final");
+      assert.equal(restarted.lookup("charge:final", "exact")?.status, status);
+      assert.equal(fs.existsSync(lock), false);
+      fs.writeFileSync(lock, "charge:other");
+      assert.equal(restarted.lookup("charge:final", "exact")?.status, status);
+      assert.equal(fs.readFileSync(lock, "utf8"), "charge:other");
+    } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+  });
+}
+
+
+for (const stored of ["cancel", "unknown", "missing", "damaged", "final"] as const) {
+  test(`startup reconciles only the lock-owned completed operation: ${stored}`, async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "pgw-startup-"));
+    try {
+      const id = "charge:owned";
+      if (stored !== "missing") {
+        await new OperationJournal(directory).execute(id, "bound-request", "terminal", async () => ({
+          status: stored === "final" ? "DECLINED" : "FAILED",
+          ...(stored === "cancel" ? { code: "-22" } : {}),
+        }));
+      }
+      const lock = path.join(directory, "terminal.lock");
+      fs.writeFileSync(lock, id);
+      if (stored === "damaged") {
+        const record = fs.readdirSync(directory).find(name => name.endsWith(".json"))!;
+        fs.writeFileSync(path.join(directory, record), "{");
+      }
+      let corrections = 0;
+      const restarted = new OperationJournal(directory, (operationId, entry) => {
+        assert.equal(operationId, id);
+        assert.equal(entry.fingerprint, "bound-request");
+        corrections += 1;
+        return entry.result.code === "-22" ? { ...entry.result, status: "DECLINED" } : entry.result;
+      });
+      if (stored === "damaged") assert.throws(() => restarted.recoverStoredOperation());
+      else restarted.recoverStoredOperation();
+      assert.equal(fs.existsSync(lock), !["cancel", "final"].includes(stored));
+      if (stored === "cancel") assert.equal(new OperationJournal(directory).lookup(id, "bound-request")?.status, "DECLINED");
+      if (["missing", "damaged", "final"].includes(stored)) assert.equal(corrections, 0);
+    } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+  });
+}

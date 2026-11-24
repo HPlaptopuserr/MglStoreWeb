@@ -340,6 +340,69 @@ export function legacyBridgeProductionSuite(globalSecret: string) {
     assert.equal((await response.json()).status, "PENDING");
   });
 
+  test("a signed physical terminal cancellation without echoed data resolves the original paired attempt", async () => {
+    const pairedSecret = pairedFixture();
+    const attemptId = crypto.randomUUID();
+    await post("/pos/payments/card/authorize-v2", authorization(attemptId));
+    const parsed = { code: -22, desc: "Гүйлгээ цуцлагдсан", terminal: "70012386", rrn: "" };
+    const result = {
+      status: "FAILED",
+      provider: "ANDROID_PGW",
+      attemptId,
+      requestAmount: 100,
+      requestedTerminalId: "terminal-1",
+      code: "-22",
+      message: "Terminal response does not match this payment",
+      data: null,
+      amount: null,
+      terminal: "70012386",
+      transactionId: null,
+      rrn: null,
+      raw: JSON.stringify(parsed),
+      parsed,
+    };
+    const bridgeResponse = JSON.stringify(result);
+    const payload = { attemptId, result, bridgeResponse, bridgeSignature: signBridgePayload(bridgeResponse, pairedSecret) };
+    const unsigned = await post("/pos/payments/card/client-bridge-result-v2", { attemptId, result });
+    assert.equal(unsigned.status, 422);
+    assert.ok(saved);
+    assert.equal(saved.status, "PENDING");
+    const response = await post("/pos/payments/card/client-bridge-result-v2", payload);
+    assert.equal(response.status, 200, await response.clone().text());
+    assert.equal((await response.json()).status, "DECLINED");
+    assert.ok(saved);
+    assert.equal(saved.status, "DECLINED");
+    assert.equal(saved.providerPayload.raw, result.raw);
+    assert.deepEqual(saved.providerPayload.parsed, parsed);
+    const replay = await post("/pos/payments/card/client-bridge-result-v2", payload);
+    assert.equal(replay.status, 200);
+    assert.equal((await replay.json()).status, "DECLINED");
+  });
+
+  test("normal status polling recovers a previously stored verified paired cancellation", async () => {
+    pairedFixture();
+    const attemptId = crypto.randomUUID();
+    await post("/pos/payments/card/authorize-v2", authorization(attemptId));
+    assert.ok(saved);
+    const parsed = { code: -22, desc: "Гүйлгээ цуцлагдсан", terminal: "70012386", rrn: "" };
+    const providerPayload = {
+      ...saved.providerPayload,
+      provider: "ANDROID_PGW", mode: "client-bridge", status: "FAILED",
+      attemptId, requestAmount: 100, requestedTerminalId: "terminal-1",
+      code: "-22", message: "Terminal response does not match this payment",
+      data: null, amount: null, terminal: "70012386", transactionId: null,
+      rrn: null, raw: JSON.stringify(parsed), parsed,
+    };
+    saved = { ...saved, providerPayload, status: "PENDING", message: providerPayload.message };
+    const response = await fetch(`${base}/pos/payments/card/status/${attemptId}`, { headers });
+    assert.equal(response.status, 200, await response.clone().text());
+    assert.equal((await response.json()).status, "DECLINED");
+    assert.ok(saved);
+    assert.equal(saved.status, "DECLINED");
+    assert.equal(saved.providerPayload.raw, providerPayload.raw);
+    assert.deepEqual(saved.providerPayload.parsed, parsed);
+  });
+
   if (globalSecret)
     test("unenrolled legacy signed bridge output does not require new binding envelope fields", async () => {
       const attemptId = crypto.randomUUID();

@@ -280,7 +280,16 @@ export const classifyPgwResponse = (response: PgwResponse): PgwDecision => {
   const declined = DECLINED_STATUS_VALUES.has(status);
   if (code && /^0+$/.test(code)) return declined ? "UNKNOWN" : "APPROVED";
   if (["-21", "-22"].includes(code)) {
-    return responseRrn(response) || responseApprovalCode(response) || approved
+    const conflictingEvidence = Object.entries(response).some(([key, value]) => {
+      const name = normalizeResponseKey(key);
+      const text = String(value ?? "").trim();
+      return (value !== null && typeof value === "object") ||
+        (/^(rrn|invoice|traceno|systemref|transactionid|appcode|approvalcode|approvecode|authcode|authorizationcode)$/.test(name) && Boolean(text)) ||
+        (/^(status|result|transactionstatus|paymentstatus|success|succeed|approved)$/.test(name) &&
+          (value === true || APPROVED_STATUS_VALUES.has(text.toUpperCase()))) ||
+        (/^(code|response|responsecode|respcode|resultcode)$/.test(name) && Boolean(text) && text !== code);
+    });
+    return conflictingEvidence || approved
       ? "UNKNOWN"
       : "DECLINED";
   }
@@ -364,6 +373,74 @@ const withoutCommandEcho = (raw: string, command: string) => {
       raw,
     )
     .trim();
+};
+
+// Serial idle time is not a message boundary: a USB reply may pause inside a
+// quoted description or before its final identity fields. Never finalize that
+// prefix as a decline (or approval) before the full structure arrives.
+export const hasIncompletePgwResponse = (raw: string): boolean => {
+  let quoted = false;
+  let escaped = false;
+  let angle = false;
+  const brackets: string[] = [];
+  for (const char of raw) {
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') quoted = false;
+      continue;
+    }
+    if (char === '"') quoted = true;
+    else if (char === "<") angle = true;
+    else if (char === ">") angle = false;
+    else if (char === "{" || char === "[") brackets.push(char);
+    else if (char === "}" || char === "]") {
+      if (brackets.pop() !== (char === "}" ? "{" : "[")) return true;
+    }
+  }
+  return quoted || angle || brackets.length > 0;
+};
+
+/** Only for a result captured on the exclusive original purchase connection,
+ * or its durable journal entry with the exact original request fingerprint. */
+export const normalizeAndroidPgwCancellation = (
+  result: ChargeResult,
+  request: ChargeParams,
+  expectedMinorAmount = Math.round(request.amount * 100),
+): ChargeResult => {
+  if (result.status !== "FAILED" || result.provider !== "ANDROID_PGW" || result.manualCard === true ||
+      typeof result.raw !== "string" || hasIncompletePgwResponse(result.raw) ||
+      !result.parsed || typeof result.parsed !== "object" || Array.isArray(result.parsed)) return result;
+  const parsed = result.parsed as PgwResponse;
+  const rawParsed = parsePgwResponse(result.raw);
+  const code = responseCode(parsed);
+  if (!["-21", "-22"].includes(code) || responseCode(rawParsed) !== code || String(result.code) !== code)
+    return result;
+  const bankKeys = /^(rrn|invoice|traceno|systemref|transactionid|appcode|approvalcode|approvecode|authcode|authorizationcode)$/;
+  const statusKeys = /^(status|result|transactionstatus|paymentstatus|success|succeed|approved)$/;
+  const safe = (record: Record<string, unknown>) => Object.entries(record).every(([key, value]) => {
+    const normalized = normalizeResponseKey(key);
+    if (normalized === "parsed" && record === result) return true;
+    // Cancellation replies are flat. Unknown nested evidence is not a refusal.
+    if (value !== null && typeof value === "object") return false;
+    const text = String(value ?? "").trim();
+    if (/^(code|response|responsecode|respcode|resultcode)$/.test(normalized) && text && text !== code) return false;
+    if (bankKeys.test(normalized) && text) return false;
+    if (statusKeys.test(normalized) && (value === true || APPROVED_STATUS_VALUES.has(text.toUpperCase()))) return false;
+    if (normalized === "data" && text && text !== request.attemptId) return false;
+    if (normalized === "amount" && text && Number(value) !== expectedMinorAmount) return false;
+    if (["terminal", "terminalid"].includes(normalized) && text && request.terminalId !== "terminal-1" && text !== request.terminalId) return false;
+    return true;
+  });
+  if (!safe(parsed) || !safe(rawParsed) || !safe(result)) return result;
+  const terminals = [parsed, rawParsed, result].flatMap((record) => Object.entries(record)
+    .filter(([key]) => ["terminal", "terminalid"].includes(normalizeResponseKey(key)))
+    .map(([, value]) => String(value ?? "").trim()).filter(Boolean));
+  if (new Set(terminals).size > 1) return result;
+  for (const [key, expected] of Object.entries({ attemptId: request.attemptId, requestAmount: request.amount, requestedTerminalId: request.terminalId })) {
+    if (result[key] !== undefined && String(result[key]) !== String(expected)) return result;
+  }
+  return { ...result, status: "DECLINED", message: responseMessage(parsed) || "Terminal payment cancelled" };
 };
 
 const isFinalTerminalResponse = (raw: string) => {
@@ -455,7 +532,7 @@ export class AndroidPgwProvider implements CardTerminalProvider {
         const parsed = parsePgwResponse(raw);
         const returnedAmount = responseValue(parsed, "amount");
         const terminal = responseTerminal(parsed);
-        const candidate = classifyPgwResponse(parsed);
+        const candidate = hasIncompletePgwResponse(raw) ? "UNKNOWN" : classifyPgwResponse(parsed);
         const hasApprovalFields =
           candidate !== "APPROVED" ||
           (returnedAmount !== null && Boolean(terminal));
@@ -468,12 +545,12 @@ export class AndroidPgwProvider implements CardTerminalProvider {
             terminal === params.terminalId);
         const decision =
           matches && responseCode(parsed) !== "" ? candidate : "UNKNOWN";
-        return this.result(
+        return normalizeAndroidPgwCancellation(this.result(
           raw,
           parsed,
           decision,
           matches ? undefined : "Terminal response does not match this payment",
-        );
+        ), params, amount);
       } finally {
         this.activeAttemptId = null;
       }
@@ -739,6 +816,10 @@ export class AndroidPgwProvider implements CardTerminalProvider {
           return;
         }
         chunks.push(chunk);
+        if (idleTimer) {
+          clearTimeout(idleTimer);
+          idleTimer = null;
+        }
         const current = Buffer.concat(chunks).toString("utf8");
         if (/^CONNECTED$/i.test(withoutCommandEcho(current, command).trim())) {
           finish(undefined, withoutCommandEcho(current, command).trim());
@@ -746,7 +827,7 @@ export class AndroidPgwProvider implements CardTerminalProvider {
         }
 
         const framedResult = terminalResultFrame(current, command);
-        if (framedResult && isFinalTerminalResponse(framedResult)) {
+        if (framedResult && !hasIncompletePgwResponse(framedResult) && isFinalTerminalResponse(framedResult)) {
           finish(undefined, framedResult.trim());
           return;
         }
@@ -756,7 +837,11 @@ export class AndroidPgwProvider implements CardTerminalProvider {
         // as a declined payment before the terminal sends its actual result.
         const unframedResult = withoutCommandEcho(current, command);
         const terminalCandidate = framedResult || unframedResult;
-        if (terminalCandidate && hasTerminalResponse(terminalCandidate)) {
+        if (
+          terminalCandidate &&
+          !hasIncompletePgwResponse(terminalCandidate) &&
+          hasTerminalResponse(terminalCandidate)
+        ) {
           if (idleTimer) clearTimeout(idleTimer);
           idleTimer = setTimeout(() => {
             const buffered = Buffer.concat(chunks).toString("utf8");

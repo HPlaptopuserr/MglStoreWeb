@@ -39,3 +39,14 @@ test("in-flight cancellation locks method changes to avoid overlapping provider 
   assert.ok(methodButton(html, "F10").includes("disabled"));
   assert.ok(methodButton(html, "F11").includes("disabled"));
 });
+
+test("pending Android cancellation remains available while payment submission is locked", () => {
+  const html = renderToStaticMarkup(<PosCheckoutView {...base} disabled cancelDisabled={false} pendingCardCancellation
+    statusTone="not-found" statusMessage="Төлбөрийн төлөв тодорхойгүй"
+    paymentEntries={[{ id: "pending", method: "CARD", amount: 7500, status: "pending", attemptId: "purchase" }]} />);
+  const cancel = html.match(/<button[^>]*aria-label="Картын төлбөр цуцлах"[^>]*>/)?.[0];
+  assert.ok(cancel);
+  assert.doesNotMatch(cancel, /\sdisabled(?:=|\s|>)/);
+  assert.match(html, /Картын төлбөр цуцлах/);
+  assert.match(html, /<button[^>]*disabled[^>]*>Гүйлгээ батлах/);
+});

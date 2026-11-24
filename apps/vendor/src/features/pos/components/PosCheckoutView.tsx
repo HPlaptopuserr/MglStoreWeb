@@ -71,6 +71,8 @@ export type PosCheckoutProps = {
   finalizationBlocker?: string | null;
   onBack: () => void;
   onCancelCheckout: () => void | Promise<void>;
+  pendingCardCancellation?: boolean;
+  cancelDisabled?: boolean;
   disabled?: boolean;
   transactionId?: string;
   loyalty: CheckoutLoyaltyState;
@@ -165,6 +167,8 @@ export function PosCheckoutView({
   finalizationBlocker,
   onBack,
   onCancelCheckout,
+  pendingCardCancellation = false,
+  cancelDisabled,
   disabled,
   transactionId = "",
   loyalty,
@@ -293,7 +297,7 @@ export function PosCheckoutView({
   };
 
   const handleCancelCheckout = async () => {
-    if (cancelCheckoutLoading || disabled) return;
+    if (cancelCheckoutLoading || (cancelDisabled ?? disabled)) return;
     setCancelCheckoutLoading(true);
     try {
       await onCancelCheckout();
@@ -347,9 +351,9 @@ export function PosCheckoutView({
           <button
             type="button"
             onClick={() => void handleCancelCheckout()}
-            disabled={disabled || cancelCheckoutLoading}
-            title="Гүйлгээ цуцалж, сагс цэвэрлэх"
-            aria-label="Гүйлгээ цуцалж, сагс цэвэрлэх"
+            disabled={(cancelDisabled ?? disabled) || cancelCheckoutLoading}
+            title={pendingCardCancellation ? "Картын төлбөр цуцлах" : "Гүйлгээ цуцалж, сагс цэвэрлэх"}
+            aria-label={pendingCardCancellation ? "Картын төлбөр цуцлах" : "Гүйлгээ цуцалж, сагс цэвэрлэх"}
             className="rounded-md border border-rose-300 bg-white p-1.5 text-rose-600 transition-colors hover:border-rose-600 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-40 max-[760px]:p-1"
           >
             {cancelCheckoutLoading ? (
@@ -565,10 +569,11 @@ export function PosCheckoutView({
             tone={statusTone}
             feedback={paymentFeedback}
             confirmedPaid={confirmedTotal}
+            pendingCardCancellation={pendingCardCancellation}
             unknownCardPayment={paymentEntries.some(entry => entry.method === "CARD" && entry.status === "pending")}
             hasPendingQPay={hasPendingQPay}
             cancelling={cancelCheckoutLoading}
-            disabled={disabled}
+            disabled={cancelDisabled ?? disabled}
             onCancel={() => void handleCancelCheckout()}
           />}
 

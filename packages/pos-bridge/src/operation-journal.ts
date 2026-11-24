@@ -4,12 +4,16 @@ import path from "node:path";
 import type { ChargeResult } from "./providers/provider.interface";
 
 type Entry = { fingerprint: string; terminalId: string; result?: ChargeResult };
+type StoredResultNormalizer = (id: string, entry: Readonly<Entry & { result: ChargeResult }>) => ChargeResult;
 
 /** Reserve before touching hardware. Interrupted/unknown operations are never resent. */
 export class OperationJournal {
   private readonly inFlight = new Map<string, Promise<ChargeResult>>();
 
-  constructor(private readonly directory: string) {
+  constructor(
+    private readonly directory: string,
+    private readonly normalizeStoredResult?: StoredResultNormalizer,
+  ) {
     fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   }
 
@@ -45,6 +49,17 @@ export class OperationJournal {
     return entry as Entry;
   }
 
+  /** Startup reads only the operation named by the durable reservation. */
+  recoverStoredOperation(): void {
+    const lockfile = path.join(this.directory, "terminal.lock");
+    if (!fs.existsSync(lockfile)) return;
+    const id = fs.readFileSync(lockfile, "utf8");
+    if (!id || this.inFlight.has(id)) return;
+    const entry = this.read(id);
+    if (!entry?.result) return;
+    this.lookup(id, entry.fingerprint);
+  }
+
   lookup(id: string, fingerprint: string): ChargeResult | null {
     const entry = this.read(id);
     if (!entry) return null;
@@ -52,6 +67,23 @@ export class OperationJournal {
       throw new Error(
         "Operation identity was reused with different parameters",
       );
+    if (entry.result?.status === "FAILED" && !this.inFlight.has(id) && this.normalizeStoredResult) {
+      const corrected = this.normalizeStoredResult(id, { ...entry, result: entry.result });
+      if (corrected !== entry.result && corrected.status === "DECLINED") {
+        // Correct saved explicit cancellation evidence without touching the
+        // terminal. Persist before releasing only this operation's reservation.
+        this.persist(id, { ...entry, result: corrected });
+        entry.result = corrected;
+      }
+    }
+    // Also recover a crash after persisting a final result but before unlink.
+    // A different operation's reservation and live operations remain untouched.
+    if (!this.inFlight.has(id) &&
+        (entry.result?.status === "APPROVED" || entry.result?.status === "DECLINED")) {
+      const lockfile = path.join(this.directory, "terminal.lock");
+      if (fs.existsSync(lockfile) && fs.readFileSync(lockfile, "utf8") === id)
+        fs.unlinkSync(lockfile);
+    }
     return (
       entry.result || {
         status: "FAILED",
@@ -59,6 +91,19 @@ export class OperationJournal {
           "Original terminal operation is unresolved; do not charge again",
       }
     );
+  }
+
+  private persist(id: string, entry: Entry): void {
+    const filename = this.filename(id);
+    const temporary = `${filename}.${process.pid}.${crypto.randomBytes(8).toString("hex")}.tmp`;
+    const fd = fs.openSync(temporary, "wx", 0o600);
+    try {
+      fs.writeFileSync(fd, JSON.stringify(entry));
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(temporary, filename);
   }
 
   async execute(
@@ -126,15 +171,7 @@ export class OperationJournal {
             : "Terminal response lost; verify original operation",
       };
     }
-    const temporary = `${filename}.${process.pid}.tmp`;
-    const fd = fs.openSync(temporary, "wx", 0o600);
-    try {
-      fs.writeFileSync(fd, JSON.stringify({ ...entry, result }));
-      fs.fsyncSync(fd);
-    } finally {
-      fs.closeSync(fd);
-    }
-    fs.renameSync(temporary, filename);
+    this.persist(id, { ...entry, result });
     if (result.status === "APPROVED" || result.status === "DECLINED")
       fs.unlinkSync(lockfile);
     return result;

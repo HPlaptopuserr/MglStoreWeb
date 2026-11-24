@@ -257,15 +257,18 @@ export function submitClientBridgeResult(payload: {
   attemptId: string;
   result: ClientBridgeChargeResult;
   cardFlowVersion?: 2;
+  signal?: AbortSignal;
 }): Promise<CardAttempt> {
+  const { signal, ...body } = payload;
   return posRequest<CardAttempt>(
     payload.cardFlowVersion === 2
       ? "/pos/payments/card/client-bridge-result-v2"
       : "/pos/payments/card/client-bridge-result",
     {
       method: "POST",
+      signal,
       body: {
-        ...payload,
+        ...body,
         bridgeResponse: payload.result.bridgeResponse,
         bridgeSignature: payload.result.bridgeSignature,
       },
@@ -316,6 +319,7 @@ export async function getCardAttemptStatus(
     return await submitClientBridgeResult({
       attemptId,
       cardFlowVersion: 2,
+      signal: combinedSignal,
       result: {
         ...result,
         bridgeResponse: text,

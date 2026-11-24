@@ -7,7 +7,7 @@ import { isDatabaseUnavailable } from "../../../lib/database-availability";
 import { retryDisconnectedRead } from "../../../lib/retry-disconnected-read";
 import { randomUUID } from "node:crypto";
 import { reconcileMinuCardAttempt } from "../../../services/minu-card-reconciliation";
-import { androidPgwResultStatus, hasAndroidPgwCancellation } from "../../../services/android-pgw-result";
+import { androidPgwResultStatus, hasAndroidPgwCancellation, normalizeVerifiedAndroidPgwCancellation } from "../../../services/android-pgw-result";
 import { isPaymentRequestId, matchesPaymentRequest } from "../../../services/payment-request-identity";
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus, CardTerminalRequestStatus } from "@mgl/database";
@@ -809,6 +809,11 @@ router.post(["/pos/payments/card/client-bridge-result", "/pos/payments/card/clie
         bridgeData = readSignedBridgeResult(req.body?.bridgeResponse, req.body?.bridgeSignature, resultSecret);
         if (bridgeData.provider !== "ANDROID_PGW" || bridgeData.attemptId !== attempt.id || Number(bridgeData.requestAmount) !== Number(attempt.amount) ||
             bridgeData.requestedTerminalId !== attempt.terminalId) throw new Error("Terminal result belongs to a different payment");
+        bridgeData = normalizeVerifiedAndroidPgwCancellation(bridgeData, {
+          attemptId: attempt.id,
+          amount: Number(attempt.amount),
+          terminalId: attempt.terminalId,
+        });
       } catch (error: unknown) {
         return res.status(422).json({ message: error instanceof Error ? error.message : "Invalid signed result" });
       }
@@ -1039,13 +1044,29 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
     let providerError: string | undefined;
     let providerHasRrn: boolean | undefined;
     const payload = attempt.providerPayload as Record<string, unknown> | null;
+    // Enrollment metadata is server-owned. Results stored for an enrolled
+    // attempt have already passed the signature and request identity checks.
+    const recoveredPayload = payload?.bridgeBindingId
+      ? normalizeVerifiedAndroidPgwCancellation(payload, {
+        attemptId: attempt.id,
+        amount: Number(attempt.amount),
+        terminalId: attempt.terminalId,
+      })
+      : payload;
+    const recoveredPairedCancellation = recoveredPayload !== payload && recoveredPayload?.status === "DECLINED";
     if (attempt.status === PosPaymentStatus.PENDING && !attempt.consumedAt && !attempt.saleReference &&
-        payload?.mode === "client-bridge" && hasAndroidPgwCancellation(payload, attempt.id)) {
+        payload?.mode === "client-bridge" && (recoveredPairedCancellation || hasAndroidPgwCancellation(payload, attempt.id))) {
       // Recover already stored cancellations during the cashier's normal poll.
       // Never issue another terminal request or overwrite a concurrent result.
       await prisma.cardPaymentAttempt.updateMany({
         where: { id, status: PosPaymentStatus.PENDING, updatedAt: attempt.updatedAt, consumedAt: null, saleReference: null },
-        data: { status: PosPaymentStatus.DECLINED },
+        data: {
+          status: PosPaymentStatus.DECLINED,
+          ...(recoveredPairedCancellation && recoveredPayload ? {
+            message: firstString(recoveredPayload.message) || attempt.message,
+            providerPayload: recoveredPayload as Prisma.InputJsonObject,
+          } : {}),
+        },
       });
       freshAttempt = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id } });
     }

@@ -16,6 +16,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
+import { UsbBridgeDownload } from "@/features/pos/components/UsbBridgeDownload";
 
 type CardTerminalRequest = {
   id: string;
@@ -182,6 +183,8 @@ export default function CardTerminalPage() {
           </div>
         </div>
       </section>
+
+      <UsbBridgeDownload />
 
       {/* Success message */}
       {success && (

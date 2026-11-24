@@ -270,6 +270,32 @@ test(
           );
         },
       );
+      await t.test("a signed terminal cancellation without echoed identity persists as declined without a sale", async () => {
+        const cancelledAttemptId = crypto.randomUUID();
+        const authorizationResponse = await post("/pos/payments/card/authorize-v2", { ...authorization, attemptId: cancelledAttemptId });
+        assert.equal(authorizationResponse.status, 201, await authorizationResponse.clone().text());
+        const parsed = { code: -22, desc: "Гүйлгээ цуцлагдсан", terminal: "70012386", rrn: "" };
+        const cancelled = {
+          status: "FAILED", provider: "ANDROID_PGW", attemptId: cancelledAttemptId,
+          requestAmount: 100, requestedTerminalId: "terminal-1", code: "-22",
+          message: "Terminal response does not match this payment", data: null,
+          amount: null, terminal: "70012386", transactionId: null, rrn: null,
+          parsed, raw: JSON.stringify(parsed),
+        };
+        const bridgeResponse = JSON.stringify(cancelled);
+        const request = { attemptId: cancelledAttemptId, result: cancelled, bridgeResponse,
+          bridgeSignature: signBridgePayload(bridgeResponse, secret) };
+        const response = await post(endpoint, request);
+        assert.equal(response.status, 200, await response.clone().text());
+        assert.equal((await response.json()).status, "DECLINED");
+        const saved = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: cancelledAttemptId } });
+        assert.equal(saved.status, "DECLINED");
+        assert.equal(saved.consumedAt, null);
+        assert.deepEqual((saved.providerPayload as Record<string, unknown>).parsed, parsed);
+        assert.equal((await post(endpoint, request)).status, 200);
+        assert.equal(await prisma.posSale.count({ where: { organizationId: organization.id } }), 1);
+        assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).stock, 2);
+      });
       await t.test(
         "PGW void is bound to the sold payment's real RRN and audited separately from stock",
         async () => {
