@@ -57,16 +57,16 @@ export function ManualMerchantConnectionPanel({
             Minu Dynamic QR мерчант холбох
           </h3>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Minu Merchant дээрх Merchant Code-оо оруулна уу. Орлого хүлээн авах
+            Терминалын дугаар, мерчантын дугаар эсвэл Merchant Code-оо оруулна уу. Тохирох кодыг автоматаар олж холбоно. Орлого хүлээн авах
             дансыг Minu Merchant-ийн тохиргоогоор удирдана.
           </p>
         </div>
-        <Field label="Merchant Code">
+        <Field label="Терминал / мерчантын дугаар / Merchant Code">
           <input
-            aria-label="Minu Merchant Code"
+            aria-label="Minu терминал, мерчантын дугаар эсвэл Merchant Code"
             type="text"
             autoComplete="off"
-            placeholder="Minu Merchant дээрх код"
+            placeholder="70048342 эсвэл 000000010048025 эсвэл Merchant Code"
             value={merchantId}
             disabled={isSubmitting}
             onChange={(event) => onMerchantIdChange(event.target.value)}
@@ -91,7 +91,7 @@ export function ManualMerchantConnectionPanel({
           ) : (
             <Link2 aria-hidden="true" className="h-4 w-4" />
           )}
-          {isSubmitting ? "Minu бүртгэл шалгаж байна…" : "Minu мерчант холбох"}
+          {isSubmitting ? "Minu бүртгэл шалгаж байна…" : "Хайж холбох"}
         </button>
         <button
           type="button"

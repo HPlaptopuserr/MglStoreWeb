@@ -24,8 +24,8 @@ test("Dynamic QR shows the merchant-code flow without the legacy register-number
   const html = renderToStaticMarkup(
     <ManualMerchantConnectionPanel {...props} />,
   );
-  assert.match(html, /Minu Merchant Code/);
-  assert.match(html, /Minu мерчант холбох/);
+  assert.match(html, /Minu терминал, мерчантын дугаар эсвэл Merchant Code/);
+  assert.match(html, /Хайж холбох/);
   assert.match(html, /Minu Merchant-ийн тохиргоогоор удирдана/);
   assert.doesNotMatch(
     html,
@@ -47,7 +47,7 @@ test("empty codes and duplicate submissions are disabled", () => {
     const html = renderToStaticMarkup(
       <ManualMerchantConnectionPanel {...props} {...values} />,
     );
-    assert.match(html, /<input[^>]*aria-label="Minu Merchant Code"/);
+    assert.match(html, /<input[^>]*aria-label="Minu терминал, мерчантын дугаар эсвэл Merchant Code"/);
     assert.match(html, /<button type="button" disabled=""/);
   }
 });

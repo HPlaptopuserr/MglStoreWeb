@@ -168,7 +168,7 @@ export async function connectVendorMerchant(
       };
     }
 
-    const normalizedMerchantId = merchantId.trim();
+    let normalizedMerchantId = merchantId.trim();
     const normalizedMerchantKey = merchantKey.trim();
     const normalizedInvoiceCode = invoiceCode?.trim() || null;
     const isSystemQr =
@@ -191,17 +191,27 @@ export async function connectVendorMerchant(
     if (isSystemQr) {
       try {
         const merchants = await listSystemQrSubMerchants();
-        if (
-          !merchants.some(
-            (merchant) => merchant.merchantCode === normalizedMerchantId,
-          )
-        ) {
+        const matches = merchants.filter((merchant) =>
+          merchant.merchantCode === normalizedMerchantId ||
+          merchant.terminalNo === normalizedMerchantId ||
+          merchant.merchantNo === normalizedMerchantId,
+        );
+        const codes = [...new Set(matches.map((merchant) => merchant.merchantCode).filter(Boolean))];
+        if (codes.length !== 1) {
           return {
             success: false,
-            message:
-              "Энэ Merchant Code Minu Dynamic QR бүртгэлээс олдсонгүй. Minu Merchant дээрх кодоо шалгана уу.",
+            message: codes.length > 1
+              ? "Энэ дугаарт хэд хэдэн мерчант таарлаа. Тухайн терминалын Merchant Code-ийг оруулна уу. Холболт өөрчлөгдөөгүй."
+              : `“${normalizedMerchantId}” код эсвэл дугаар манай API эрхээр харагдах Minu Dynamic QR жагсаалтад олдсонгүй. Энэ нь Minu порталд бүртгэлгүй гэсэн үг биш. Терминалын API эрхийн холболтыг Minu талаас шалгуулна уу.`,
           };
         }
+        const resolvedCode = codes[0]!;
+        if (resolvedCode !== normalizedMerchantId &&
+            await findActiveMerchantOrganizationConflict(organizationId, resolvedCode)) {
+          return { success: false,
+            message: "Энэ merchant code өөр байгууллагад идэвхтэй ашиглагдаж байна. Эхлээд хуучин холболтыг салгана уу." };
+        }
+        normalizedMerchantId = resolvedCode;
       } catch {
         return {
           success: false,
@@ -228,7 +238,7 @@ export async function connectVendorMerchant(
     return {
       success: true,
       message: "Мерчант данс амжилттай холбогдлоо",
-      merchantId: merchantId,
+      merchantId: normalizedMerchantId,
     };
   } catch (error) {
     console.error("vendor merchant connect error", error);

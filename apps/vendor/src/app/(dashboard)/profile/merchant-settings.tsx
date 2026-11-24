@@ -420,7 +420,7 @@ export function MerchantSettingsSection({
       setMessage({
         type: "error",
         text: isSystemQr
-          ? "Merchant code шаардлагатай"
+          ? "Терминал, мерчантын дугаар эсвэл Merchant Code оруулна уу"
           : "Мерчант ID ба key шаардлагатай",
       });
       return;

@@ -65,7 +65,7 @@ export function ExistingMerchantDialog({
             </h2>
             <p className="mt-1 text-sm text-slate-500">
               {provider === "systemqr"
-                ? "Minu Merchant дээрх Merchant Code-оор холбоно."
+                ? "Терминал, мерчантын дугаар эсвэл Merchant Code-оор хайж холбоно."
                 : "QPay QuickQR бүртгэлээ регистрийн дугаараар хайна."}
             </p>
           </div>

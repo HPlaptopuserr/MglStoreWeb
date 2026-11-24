@@ -71,6 +71,8 @@ beforeEach(() => {
         {
           merchantCode: "MGL_STEPPE_1795508501363",
           merchantName: "MGL_312_Төлбөр",
+          terminalNo: "70048285",
+          merchantNo: "000000010047968",
         },
       ],
     });
@@ -98,7 +100,7 @@ test("a display name cannot be saved as a merchant code", async () => {
     "SYSTEMQR",
   );
   assert.equal(result.success, false);
-  assert.match(result.message, /Merchant Code/);
+  assert.match(result.message, /API эрхээр харагдах/);
   assert.equal(writes.length, 0);
 });
 test("provider failure never creates an apparently connected SystemQR merchant", async () => {
@@ -183,4 +185,44 @@ test("reconnecting the same merchant preserves its registration account snapshot
     true,
   );
   assert.equal(writes[0].qpayBankAccounts, undefined);
+});
+
+
+test("terminal and merchant numbers resolve to the provider code before saving", async () => {
+  for (const identifier of ["70048285", "000000010047968"]) {
+    const result = await connectVendorMerchant("org", identifier, "systemqr", "SYSTEMQR");
+    assert.equal(result.success, true);
+    assert.equal(result.merchantId, "MGL_STEPPE_1795508501363");
+    assert.equal(writes.at(-1)?.qpayMerchantId, "MGL_STEPPE_1795508501363");
+  }
+});
+test("an alias cannot bypass another organization's active merchant connection", async () => {
+  stub(prisma.organization, "findFirst", async (args: unknown) => {
+    const query = args as Prisma.OrganizationFindFirstArgs;
+    return JSON.stringify(query).includes("MGL_STEPPE_1795508501363") ? { id: "other" } : null;
+  });
+  const result = await connectVendorMerchant("org", "70048285", "systemqr", "SYSTEMQR");
+  assert.equal(result.success, false);
+  assert.match(result.message, /өөр байгууллагад/);
+  assert.equal(writes.length, 0);
+});
+test("ambiguous numbers never select the first merchant", async () => {
+  stub(globalThis, "fetch", async (input: string | URL | Request) =>
+    String(input).endsWith("/login") ? Response.json({ status: "000", entity: "token" }) :
+      Response.json({ status: "000", entity: [
+        { merchantCode: "AGENT_one", terminalNo: "1234" },
+        { merchantCode: "AGENT_two", terminalNo: "1234" },
+      ] }));
+  const result = await connectVendorMerchant("org", "1234", "systemqr", "SYSTEMQR");
+  assert.equal(result.success, false);
+  assert.match(result.message, /хэд хэдэн/);
+  assert.equal(writes.length, 0);
+});
+test("AGENT codes are accepted when the current provider list verifies them", async () => {
+  stub(globalThis, "fetch", async (input: string | URL | Request) =>
+    String(input).endsWith("/login") ? Response.json({ status: "000", entity: "token" }) :
+      Response.json({ status: "000", entity: [{ merchantCode: "AGENT_example", terminalNo: "1234" }] }));
+  const result = await connectVendorMerchant("org", "AGENT_example", "systemqr", "SYSTEMQR");
+  assert.equal(result.success, true);
+  assert.equal(writes[0].qpayMerchantId, "AGENT_example");
 });
