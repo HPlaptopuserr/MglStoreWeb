@@ -227,7 +227,7 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
       )}
 
       {printError && <p role="alert" className="mt-2 text-xs text-rose-700">{printError}</p>}
-      <ReceiptPrinterSettings />
+      <ReceiptPrinterSettings paperWidthMm={paperWidthMm} />
 
       {canPreviewDemo && (
         <label className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 p-3 text-xs font-semibold text-amber-900">

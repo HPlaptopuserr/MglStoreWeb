@@ -29,6 +29,11 @@ test("receipt preferences persist and blocked storage retains the selected sessi
     assert.equal(readReceiptCompact(), true);
     assert.equal(readReceiptPaperWidth(), 58);
     assert.equal(readReceiptPageMode(), "receipt");
+    stored.set("mgl_receipt_paper_width_mm", "80");
+    assert.equal(readReceiptPageMode(), "printer");
+    stored.set("mgl_receipt_page_mode", "receipt");
+    assert.equal(readReceiptPageMode(), "receipt");
+    stored.delete("mgl_receipt_page_mode");
     saveReceiptPaperWidth(80);
     saveReceiptPageMode("printer");
     assert.equal(readReceiptPaperWidth(), 80);

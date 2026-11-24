@@ -45,6 +45,7 @@ export function receiptPrintLayout(receipt: PosReceipt) {
 
 export const receiptPrintCss = `
   body { font-family: Arial, sans-serif; font-size: 8.5pt; line-height: 1.2; }
+  .receipt-document { width: 100%; min-width: 0; }
   .receipt header { text-align: center; margin-bottom: 2mm; padding: 1mm 0 1.5mm; border-bottom: 1px solid #111; }
   .receipt h1 { margin: 0; font-size: 15pt; overflow-wrap: anywhere; }
   .receipt header p { margin: .6mm 0 0; font-size: 8pt; font-weight: 700; letter-spacing: .3px; }
@@ -52,9 +53,9 @@ export const receiptPrintCss = `
   .pair strong { text-align: right; font-weight: 500; overflow-wrap: anywhere; min-width: 0; }
   .pair span { flex-shrink: 0; }
   .metadata { font-size: 8pt; padding-bottom: 1mm; }
-  .receipt table { width: 100%; border-collapse: collapse; table-layout: auto; }
+  .receipt table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   .receipt th { text-align: left; border-top: 1px dashed #444; border-bottom: 1px dashed #444; padding: 1mm 0; font-size: 8pt; }
-  .receipt th:not(:first-child), .receipt td:not(:first-child) { text-align: right; font-size: 8pt; font-variant-numeric: tabular-nums; white-space: nowrap; overflow-wrap: normal; }
+  .receipt th:not(:first-child), .receipt td:not(:first-child) { text-align: right; font-size: 8pt; font-variant-numeric: tabular-nums; white-space: normal; overflow-wrap: anywhere; }
   .receipt td { border-bottom: 1px dotted #bbb; padding: 1.3mm 0; vertical-align: top; overflow-wrap: anywhere; }
   .receipt td:first-child { padding-right: 2mm; }
   .receipt th:nth-child(n+3), .receipt td:nth-child(n+3) { padding-left: .7mm; }

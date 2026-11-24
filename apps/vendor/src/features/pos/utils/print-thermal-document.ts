@@ -35,7 +35,8 @@ export function printThermalDocument({
   if (frame) {
     frame.title = "Баримт хэвлэх";
     frame.setAttribute("aria-hidden", "true");
-    frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${paperWidthMm}mm;height:760px;border:0;`;
+    // Keep the print document at the page origin for native print dialogs.
+    frame.style.cssText = `position:fixed;left:0;top:0;width:${paperWidthMm}mm;height:760px;border:0;visibility:hidden;pointer-events:none;`;
     document.body.appendChild(frame);
   }
   const popup = frame

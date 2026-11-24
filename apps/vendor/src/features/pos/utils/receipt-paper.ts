@@ -32,17 +32,16 @@ export type ReceiptPageMode = "receipt" | "printer";
 let sessionPageMode: ReceiptPageMode | undefined;
 const RECEIPT_PAGE_MODE_STORAGE_KEY = "mgl_receipt_page_mode";
 
-/** Existing installations retain receipt-length roll printing. */
+/** Let 80 mm drivers own the page size unless the cashier selected a mode. */
 export function readReceiptPageMode(): ReceiptPageMode {
   if (sessionPageMode !== undefined) return sessionPageMode;
-  if (typeof window === "undefined") return "receipt";
+  const fallback = readReceiptPaperWidth() === 80 ? "printer" : "receipt";
+  if (typeof window === "undefined") return fallback;
   try {
-    return window.localStorage.getItem(RECEIPT_PAGE_MODE_STORAGE_KEY) ===
-      "printer"
-      ? "printer"
-      : "receipt";
+    const stored = window.localStorage.getItem(RECEIPT_PAGE_MODE_STORAGE_KEY);
+    return stored === "receipt" || stored === "printer" ? stored : fallback;
   } catch {
-    return sessionPageMode ?? "receipt";
+    return fallback;
   }
 }
 

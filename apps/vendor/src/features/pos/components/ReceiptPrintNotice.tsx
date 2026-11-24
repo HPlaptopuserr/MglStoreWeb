@@ -31,7 +31,7 @@ export function ReceiptPrintNotice({ receipt, onDismiss }: {
     <p className="font-semibold">Борлуулалт бүртгэгдлээ · {receipt.receiptNo}</p>
     <p className="mt-1 text-sm text-slate-600">Хэвлэх цонх нээгдээгүй бол доорх товчийг дарна уу.</p>
     {printError && <p role="alert" className="mt-2 text-sm text-rose-700">{printError}</p>}
-    <ReceiptPrinterSettings />
+    <ReceiptPrinterSettings paperWidthMm={paperWidthMm} />
     <div className="mt-3 flex flex-wrap gap-2">
       <select
         value={paperWidthMm}

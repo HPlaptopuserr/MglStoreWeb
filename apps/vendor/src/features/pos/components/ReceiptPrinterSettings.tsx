@@ -7,19 +7,40 @@ import {
   saveReceiptCompact,
   saveReceiptPageMode,
   type ReceiptPageMode,
+  type ReceiptPaperWidth,
 } from "../utils/receipt-paper";
 
 /** Shared settings apply to automatic checkout prints and history reprints. */
-export function ReceiptPrinterSettings() {
+export function ReceiptPrinterSettings({
+  paperWidthMm,
+}: {
+  paperWidthMm: ReceiptPaperWidth;
+}) {
   const [compact, setCompact] = useState(false);
   const [mode, setMode] = useState<ReceiptPageMode>("receipt");
   useEffect(() => {
     setMode(readReceiptPageMode());
     setCompact(readReceiptCompact());
-  }, []);
+  }, [paperWidthMm]);
 
   return (
     <div className="mt-2 space-y-1 text-xs text-slate-600">
+      <button
+        type="button"
+        onClick={() => {
+          setMode("printer");
+          saveReceiptPageMode("printer");
+          setCompact(false);
+          saveReceiptCompact(false);
+        }}
+        className="min-h-9 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 font-semibold text-blue-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+      >
+        Принтерт тааруулах · {paperWidthMm} мм
+      </button>
+      <p>
+        Баримтын зах тасарч байвал цаасны зөв өргөнийг сонгоод «Принтерт
+        тааруулах»-ыг дарж, дахин хэвлэнэ үү.
+      </p>
       <label className="flex flex-wrap items-center gap-2">
         Хэвлэх горим
         <select

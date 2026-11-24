@@ -95,6 +95,9 @@ test("async receipt printing supports 58 mm and 80 mm without a popup", async ()
     assert.equal(printRule.media.mediaText, "print");
     assert.match(documentMarkup, /max-width: 58mm/);
     assert.match(frame.style.cssText, /width:58mm/);
+    assert.match(frame.style.cssText, /left:0;top:0/);
+    assert.match(frame.style.cssText, /visibility:hidden/);
+    assert.doesNotMatch(frame.style.cssText, /-10000px/);
     assert.doesNotMatch(documentMarkup, /overflow: hidden/);
     assert.match(documentMarkup, /padding: 2mm 5mm/);
     afterPrint?.();
