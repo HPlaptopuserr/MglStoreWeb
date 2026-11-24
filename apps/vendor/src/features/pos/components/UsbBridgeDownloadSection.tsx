@@ -2,8 +2,9 @@ import type { RegisterConfig } from "@mgl/types";
 import { Download, Usb } from "lucide-react";
 import { effectiveCardProvider } from "../utils/card-register-provider";
 
-// Activate only after the Windows release assets have passed verification.
-export const USB_BRIDGE_INSTALLER_URL: string | null = null;
+// This Windows release passed packaging, runtime and checksum verification.
+export const USB_BRIDGE_INSTALLER_URL: string | null =
+  "https://github.com/HPlaptopuserr/MglStoreWeb/releases/download/pax-a35-bridge-20261124-cancel/MGL-POS-Bridge-android-pgw-Installer.exe";
 
 type UsbBridgeDownloadSectionProps = {
   organizationId: string;
@@ -60,9 +61,9 @@ export function UsbBridgeDownloadSection({
           <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-slate-600">
             <li>Кассын Windows компьютер дээр суулгагчийг татаж ажиллуулна.</li>
             <li>
-              Картын төхөөрөмжөө USB кабелиар холбоод MGL POS Bridge-ийг нээнэ.
+              Анх суулгаж байгаа бол админаас өгсөн холбох линкийг оруулна.
             </li>
-            <li>Bridge ажиллаж байх үед POS-оор картын төлбөр хүлээн авна.</li>
+            <li>Картын төхөөрөмжөө USB кабелиар холбоод POS дээр төлөвийг шалгана.</li>
           </ol>
         </div>
         <a
