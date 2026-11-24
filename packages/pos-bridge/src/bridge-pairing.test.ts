@@ -24,7 +24,7 @@ const code = "ABCDE-12345-ABCDE-12345";
 const temporary = () =>
   fs.mkdtempSync(path.join(os.tmpdir(), "mgl-bridge-pair-"));
 
-function installPairingCli(directory: string, apiUrl: string, input: string) {
+function installPairingCli(directory: string, apiUrl: string, input: string, args = ["--if-needed"]) {
   return new Promise<{ exitCode: number | null; output: string }>(
     (resolve, reject) => {
       const child = spawn(
@@ -33,7 +33,7 @@ function installPairingCli(directory: string, apiUrl: string, input: string) {
           "-r",
           require.resolve("ts-node/register"),
           path.join(__dirname, "pair.ts"),
-          "--if-needed",
+          ...args,
         ],
         {
           cwd: directory,
@@ -234,6 +234,56 @@ test("unresolved financial evidence prevents pairing before any network exchange
       /unresolved/,
     );
     assert.equal(readBridgeCredentials(directory), null);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("an enrolled setup can upgrade around a verified cancellation while preserving its journal", async () => {
+  const directory = temporary();
+  const apiUrl = "https://api.example/api";
+  try {
+    writeBridgeCredentials(directory, {
+      bindingId: "binding",
+      registerId: "register",
+      deviceId: "f".repeat(32),
+      secret: "e".repeat(64),
+      apiUrl,
+    });
+    const id = "charge:cancelled";
+    const lockfile = path.join(directory, "terminal.lock");
+    const journalFile = path.join(directory, crypto.createHash("sha256").update(id).digest("hex") + ".json");
+    const parsed = { code: -22, desc: "Гүйлгээ цуцлагдсан", terminal: "70012386", rrn: "" };
+    const fingerprint = JSON.stringify({ attemptId: "cancelled", amount: 4368, terminalId: "terminal-1" });
+    const saved = JSON.stringify({
+      fingerprint,
+      terminalId: "terminal-1",
+      result: {
+        status: "FAILED", provider: "ANDROID_PGW", code: "-22",
+        data: null, amount: null, terminal: "70012386",
+        raw: JSON.stringify(parsed), parsed,
+      },
+    });
+    fs.writeFileSync(lockfile, id);
+    fs.writeFileSync(journalFile, saved);
+    for (const args of [["--check-upgrade"], ["--if-needed"]]) {
+      const check = await installPairingCli(directory, apiUrl, "", args);
+      assert.equal(check.exitCode, 0, check.output);
+      assert.doesNotMatch(check.output, /Connection link or code/);
+      assert.equal(fs.readFileSync(lockfile, "utf8"), id);
+      assert.equal(fs.readFileSync(journalFile, "utf8"), saved);
+    }
+    const rePair = await installPairingCli(directory, apiUrl, "", []);
+    assert.equal(rePair.exitCode, 1);
+    const strict = await installPairingCli(directory, apiUrl, "", ["--check-safe"]);
+    assert.equal(strict.exitCode, 1);
+    const unknown = JSON.stringify({ fingerprint, terminalId: "terminal-1" });
+    fs.writeFileSync(journalFile, unknown);
+    const blocked = await installPairingCli(directory, apiUrl, "", ["--check-upgrade"]);
+    assert.equal(blocked.exitCode, 1);
+    assert.match(blocked.output, /unresolved operation/);
+    assert.equal(fs.readFileSync(journalFile, "utf8"), unknown);
+    assert.equal(fs.readFileSync(lockfile, "utf8"), id);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }

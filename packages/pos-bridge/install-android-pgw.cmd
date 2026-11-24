@@ -48,7 +48,7 @@ if not defined IS_INSTALLED (
       set "SAFE_NODE=%~dp0runtime\node.exe"
       if not exist "!SAFE_NODE!" set "SAFE_NODE=node"
       pushd "%INSTALL_DIR%"
-      "!SAFE_NODE!" "%~dp0dist\pair.js" --check-safe
+      "!SAFE_NODE!" "%~dp0dist\pair.js" --check-upgrade
       set "SAFE_RESULT=!ERRORLEVEL!"
       popd
       if not "!SAFE_RESULT!"=="0" (

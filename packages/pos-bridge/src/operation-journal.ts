@@ -60,6 +60,17 @@ export class OperationJournal {
     this.lookup(id, entry.fingerprint);
   }
 
+  /** The installer can inspect a saved cancellation while the old bridge runs. */
+  hasRecoverableStoredCancellation(): boolean {
+    const lockfile = path.join(this.directory, "terminal.lock");
+    if (!this.normalizeStoredResult || !fs.existsSync(lockfile)) return false;
+    const id = fs.readFileSync(lockfile, "utf8");
+    if (!id || this.inFlight.has(id)) return false;
+    const entry = this.read(id);
+    if (entry?.result?.status !== "FAILED") return false;
+    return this.normalizeStoredResult(id, { ...entry, result: entry.result }).status === "DECLINED";
+  }
+
   lookup(id: string, fingerprint: string): ChargeResult | null {
     const entry = this.read(id);
     if (!entry) return null;

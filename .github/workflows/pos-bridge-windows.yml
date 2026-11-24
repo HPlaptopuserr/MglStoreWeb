@@ -2,7 +2,7 @@ name: PAX A35 Windows bridge prerelease
 
 on:
   push:
-    branches: [codex/pax-cancel-20261124]
+    branches: [codex/pax-upgrade-20261124]
     paths:
       - packages/pos-bridge/**
       - .github/workflows/pos-bridge-windows.yml
@@ -12,15 +12,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: pax-a35-bridge-20261124-cancel
+  group: pax-a35-bridge-20261124-upgrade
   cancel-in-progress: false
 
 env:
-  RELEASE_TAG: pax-a35-bridge-20261124-cancel
+  RELEASE_TAG: pax-a35-bridge-20261124-upgrade
 
 jobs:
   package:
-    if: github.ref == 'refs/heads/codex/pax-cancel-20261124'
+    if: github.ref == 'refs/heads/codex/pax-upgrade-20261124'
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
@@ -42,6 +42,55 @@ jobs:
         run: pnpm --filter @mgl/pos-bridge test
       - name: Build Windows native distribution and installer
         run: pnpm --filter @mgl/pos-bridge package:windows
+      - name: Exercise Windows CMD upgrade with a saved terminal cancellation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $Zip = "C:\tmp\mgl-pos-bridge-release\mgl-pos-bridge-android-pgw.zip"
+          $Source = Join-Path $env:RUNNER_TEMP "PGW upgrade source"
+          Expand-Archive -LiteralPath $Zip -DestinationPath $Source
+          # Isolate machine integration, while exercising the actual CMD copy,
+          # preflight, nested installed invocation and bundled pairing CLI.
+          foreach ($Name in @("stop-installed-bridge.ps1", "create-pairing-shortcut.ps1", "register-startup-task.ps1")) {
+            Set-Content -LiteralPath (Join-Path $Source $Name) -Value "exit 0" -Encoding ascii
+          }
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP "PGW app data"
+          $InstallDir = Join-Path $env:LOCALAPPDATA "MGLStore\pos-bridge"
+          $State = Join-Path $env:LOCALAPPDATA "MGLStore\pos-bridge-data"
+          New-Item -ItemType Directory -Path $InstallDir, $State | Out-Null
+          "BRIDGE_PROVIDER=android-pgw" | Set-Content -LiteralPath (Join-Path $InstallDir "bridge.env") -Encoding ascii
+          $Utf8 = [System.Text.UTF8Encoding]::new($false)
+          $Credentials = @{ bindingId = "ci-binding"; registerId = "ci-register"; deviceId = ("c" * 32); secret = ("e" * 64); apiUrl = "http://127.0.0.1:9/api" }
+          $CredentialsPath = Join-Path $State "bridge-credentials.json"
+          [System.IO.File]::WriteAllText($CredentialsPath, ($Credentials | ConvertTo-Json -Compress), $Utf8)
+          $Lock = Join-Path $State "terminal.lock"
+          [System.IO.File]::WriteAllText($Lock, "charge:cancelled", $Utf8)
+          $Hash = [Convert]::ToHexString([System.Security.Cryptography.SHA256]::HashData($Utf8.GetBytes("charge:cancelled"))).ToLowerInvariant()
+          $Saved = Join-Path $State "$Hash.json"
+          $Parsed = @{code = -22; desc = "Terminal payment cancelled"; terminal = "70012386"; rrn = ""}
+          $Entry = @{
+            fingerprint = '{"attemptId":"cancelled","amount":4368,"terminalId":"terminal-1"}'
+            terminalId = "terminal-1"
+            result = @{ status = "FAILED"; provider = "ANDROID_PGW"; code = "-22"; terminal = "70012386"; raw = ($Parsed | ConvertTo-Json -Compress); parsed = $Parsed }
+          }
+          [System.IO.File]::WriteAllText($Saved, ($Entry | ConvertTo-Json -Depth 5 -Compress), $Utf8)
+          $Before = (Get-FileHash -LiteralPath $Saved).Hash
+          & (Join-Path $Source "install-android-pgw.cmd") --no-start --no-pause
+          if ($LASTEXITCODE -ne 0) { throw "Windows upgrade rejected a verified terminal cancellation" }
+          if (-not (Test-Path -LiteralPath (Join-Path $InstallDir "dist\index.js"))) { throw "Windows upgrade did not copy the bridge" }
+          if ((Get-FileHash -LiteralPath $Saved).Hash -ne $Before -or [System.IO.File]::ReadAllText($Lock) -ne "charge:cancelled") {
+            throw "Installer preflight modified the journal before bridge startup"
+          }
+          Push-Location $InstallDir
+          try {
+            & (Join-Path $InstallDir "runtime\node.exe") -e "require('./dist/android-pgw-journal').createAndroidPgwJournal(process.argv[1]).recoverStoredOperation()" $State
+            if ($LASTEXITCODE -ne 0) { throw "The installed bridge could not recover the saved cancellation" }
+          } finally {
+            Pop-Location
+          }
+          if ((Test-Path -LiteralPath $Lock) -or (Get-Content -Raw -LiteralPath $Saved | ConvertFrom-Json).result.status -ne "DECLINED") {
+            throw "Recovery failed to persist the cancellation and release the local reservation"
+          }
       - name: Validate distribution and smoke-test bundled runtime
         shell: pwsh
         run: |
@@ -187,7 +236,7 @@ jobs:
             C:\tmp\mgl-pos-bridge-release\RELEASE-NOTES.md
 
   publish:
-    if: github.ref == 'refs/heads/codex/pax-cancel-20261124'
+    if: github.ref == 'refs/heads/codex/pax-upgrade-20261124'
     needs: package
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -217,7 +266,7 @@ jobs:
           gh release create "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "PAX A35 terminal cancellation fix 2026-11-24" \
+            --title "PAX A35 bridge installer update 2026-11-24" \
             --notes-file RELEASE-NOTES.md \
             --prerelease \
             mgl-pos-bridge-android-pgw.zip \
