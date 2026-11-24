@@ -61,15 +61,20 @@ test('Minu endpoint creates with the organization merchant, never the register o
   stub(process.env, 'SYSTEMQR_USERNAME', 'unit-test-master');
   stub(process.env, 'SYSTEMQR_PASSWORD', 'unit-test-password');
   const invoice = { id: requestId, organizationId: 'org', registerId: 'register', amount: 1000, status: 'PENDING', expiresAt: new Date(), createdAt: new Date() };
+  stub(prisma.qPayInvoice, 'findUniqueOrThrow', async ({ where }: { where: { id: string } }) => {
+    assert.equal(where.id, requestId);
+    return { ...invoice, webhookPayload: { reviewEvidence: 'retained-review-evidence' } };
+  });
   stub(prisma.qPayInvoice, 'create', async ({ data }: { data: { webhookPayload: { provider: string; merchantCode: string } } }) => {
     assert.equal(data.webhookPayload.provider, 'SYSTEMQR');
     assert.equal(data.webhookPayload.merchantCode, 'owner-minu');
     return invoice;
   });
-  stub(prisma.qPayInvoice, 'update', async ({ data }: { data: { qrText: string; webhookPayload: { provider: string; merchantCode: string; merchantScope: string } } }) => {
+  stub(prisma.qPayInvoice, 'update', async ({ data }: { data: { qrText: string; webhookPayload: { provider: string; merchantCode: string; merchantScope: string; reviewEvidence: string } } }) => {
     assert.equal(data.webhookPayload.provider, 'SYSTEMQR');
     assert.equal(data.webhookPayload.merchantCode, 'owner-minu');
     assert.equal(data.webhookPayload.merchantScope, 'ORGANIZATION');
+    assert.equal(data.webhookPayload.reviewEvidence, 'retained-review-evidence');
     return { ...invoice, ...data };
   });
   stub(prisma.auditLog, 'create', async () => ({}));
