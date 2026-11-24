@@ -82,7 +82,11 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Shortcut helper failed for test Desktop: $DesktopCase" }
             $LinkPath = Join-Path $DesktopCase "PAX A35 Connect.lnk"
             if (-not (Test-Path -LiteralPath $LinkPath -PathType Leaf)) { throw "Shortcut was not saved: $LinkPath" }
-            $Link = $ShortcutShell.CreateShortcut($LinkPath)
+            # Read the actual saved link through an ASCII inspection filename:
+            # the same WScript ANSI filename limitation applies when opening it.
+            $InspectionLink = Join-Path $env:RUNNER_TEMP ("pgw-shortcut-inspect-" + [guid]::NewGuid().ToString("N") + ".lnk")
+            [System.IO.File]::Copy($LinkPath, $InspectionLink, $true)
+            $Link = $ShortcutShell.CreateShortcut($InspectionLink)
             if (-not $Link.TargetPath.Equals((Join-Path $SmokeDir "pair-bridge.cmd"), [System.StringComparison]::OrdinalIgnoreCase)) {
               throw "Pairing shortcut targets the wrong command"
             }
@@ -131,17 +135,20 @@ jobs:
             New-Item -ItemType Directory -Path $PairedState -Force | Out-Null
             @{ bindingId = "ci-binding"; registerId = "ci-register"; deviceId = ("c" * 32); secret = ("e" * 64); apiUrl = "http://127.0.0.1:9/api" } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PairedState "bridge-credentials.json") -Encoding ascii
             $env:BRIDGE_DATA_DIR = $PairedState
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $SmokeDir "start-windows-task.ps1") -BridgeDir $InstalledDir
-            if ($LASTEXITCODE -eq 0) { throw "Paired startup falsely succeeded while an unrelated mock retained the port" }
+            $StartupProbeScript = Join-Path $SmokeDir "start-windows-task.ps1"
+            $StartupProbe = Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$StartupProbeScript`"", "-BridgeDir", "`"$InstalledDir`"") -NoNewWindow -Wait -PassThru
+            if ($StartupProbe.ExitCode -eq 0) { throw "Paired startup falsely succeeded while an unrelated mock retained the port" }
             if (Test-Path -LiteralPath (Join-Path $InstalledDir "started-unexpectedly.txt")) { throw "Startup launched a second bridge on an occupied port" }
             if ($BridgeProcess.HasExited) { throw "Startup killed an existing listener instead of diagnosing it" }
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $SmokeDir "check-bridge-ready.ps1") -BridgeDir $InstalledDir -TimeoutSeconds 2
-            if ($LASTEXITCODE -eq 0) { throw "Readiness falsely accepted the unrelated mock listener" }
+            $ReadinessProbeScript = Join-Path $SmokeDir "check-bridge-ready.ps1"
+            $ReadinessProbe = Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$ReadinessProbeScript`"", "-BridgeDir", "`"$InstalledDir`"", "-TimeoutSeconds", "2") -NoNewWindow -Wait -PassThru
+            if ($ReadinessProbe.ExitCode -eq 0) { throw "Readiness falsely accepted the unrelated mock listener" }
             $StillMock = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 2
             if ($StillMock.provider -ne "mock") { throw "Occupied-port test changed the running provider" }
             Write-Host "Paired startup correctly rejected an unrelated mock listener without stopping it."
-            # The expected nonzero startup probe is not a workflow failure.
-            $global:LASTEXITCODE = 0
+            # Expected failures are inspected as process ExitCode values; they
+            # never poison the runner's script-local native LASTEXITCODE.
+            $LASTEXITCODE = 0
           } catch {
             if (Test-Path -LiteralPath $Stderr) { Get-Content -LiteralPath $Stderr }
             throw

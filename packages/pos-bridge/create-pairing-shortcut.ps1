@@ -24,12 +24,32 @@ if (-not $DesktopDir -or $DesktopDir.Trim().Length -eq 0) {
 New-Item -ItemType Directory -Path $DesktopDir -Force | Out-Null
 
 $ShortcutPath = Join-Path $DesktopDir "PAX A35 Connect.lnk"
-$Shell = New-Object -ComObject WScript.Shell
-$Shortcut = $Shell.CreateShortcut($ShortcutPath)
-$Shortcut.TargetPath = $PairScript
-$Shortcut.WorkingDirectory = $BridgeDir
-$Shortcut.WindowStyle = 1
-$Shortcut.Description = "Connect this cashier to the PAX A35 register selected in Admin"
-$Shortcut.IconLocation = Join-Path $env:SystemRoot "System32\shell32.dll"
-$Shortcut.Save()
+# WScript.Shell may narrow the Save filename through the active ANSI code page.
+# Save in an ASCII staging directory, then use Unicode-aware .NET file IO for
+# redirected Desktop paths. Failure is a nonfatal installer convenience warning.
+$StagingRoot = [System.IO.Path]::GetTempPath()
+if ($StagingRoot -match '[^\x00-\x7F]') {
+  $StagingRoot = Join-Path $env:SystemRoot "Temp"
+}
+if ($StagingRoot -match '[^\x00-\x7F]') {
+  throw "An ASCII shortcut staging directory is unavailable. Use pair-bridge.cmd."
+}
+$StagingDir = Join-Path $StagingRoot ("MGL-PAX-Shortcut-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Path $StagingDir -Force | Out-Null
+try {
+  $StagingShortcut = Join-Path $StagingDir "PAX A35 Connect.lnk"
+  $Shell = New-Object -ComObject WScript.Shell
+  $Shortcut = $Shell.CreateShortcut($StagingShortcut)
+  $Shortcut.TargetPath = $PairScript
+  $Shortcut.WorkingDirectory = $BridgeDir
+  $Shortcut.WindowStyle = 1
+  $Shortcut.Description = "Connect this cashier to the PAX A35 register selected in Admin"
+  $Shortcut.IconLocation = Join-Path $env:SystemRoot "System32\shell32.dll"
+  $Shortcut.Save()
+  [System.IO.File]::Copy($StagingShortcut, $ShortcutPath, $true)
+} finally {
+  if (Test-Path -LiteralPath $StagingDir) {
+    Remove-Item -LiteralPath $StagingDir -Recurse -Force
+  }
+}
 Write-Host "[OK] PAX A35 desktop connection shortcut is ready."
