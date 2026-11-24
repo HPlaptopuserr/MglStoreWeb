@@ -32,10 +32,10 @@ export type ReceiptPageMode = "receipt" | "printer";
 let sessionPageMode: ReceiptPageMode | undefined;
 const RECEIPT_PAGE_MODE_STORAGE_KEY = "mgl_receipt_page_mode";
 
-/** Let 80 mm drivers own the page size unless the cashier selected a mode. */
+/** Receipt-length pages keep a fiscal receipt and its QR together. */
 export function readReceiptPageMode(): ReceiptPageMode {
   if (sessionPageMode !== undefined) return sessionPageMode;
-  const fallback = readReceiptPaperWidth() === 80 ? "printer" : "receipt";
+  const fallback: ReceiptPageMode = "receipt";
   if (typeof window === "undefined") return fallback;
   try {
     const stored = window.localStorage.getItem(RECEIPT_PAGE_MODE_STORAGE_KEY);

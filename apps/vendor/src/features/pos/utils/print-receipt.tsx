@@ -70,10 +70,12 @@ export function printReceipt(
           : ""
       }
       .ebarimt-qr { margin-top: 1.5mm; text-align: center; }
-      .ebarimt-qr svg { width: 42mm; max-width: 100%; height: auto; }
+      .ebarimt-qr svg { width: 32mm; max-width: 100%; height: auto; }
       .ebarimt-qr-title { margin: 0 0 2mm; font-family: sans-serif; font-size: 9pt; font-weight: 700; }
     `,
     paperWidthMm,
+    // Always measure the entire fiscal receipt, including QR, as one roll page.
+    pageMode: "receipt",
     compact,
     target: options.target,
   });

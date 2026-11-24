@@ -36,7 +36,7 @@ export function receiptPrintLayout(receipt: PosReceipt) {
   return `<article class="receipt">
     <header><h1>${escape(receipt.branchName)}</h1><p>${receiptTitle}</p></header>
     <section class="metadata">${pair("Баримт №", receipt.receiptNo)}${pair("Огноо", date)}${pair("Кассчин", receipt.registerName ? `${receipt.cashierName} · ${receipt.registerName}` : receipt.cashierName)}</section>
-    <table><colgroup><col style="width:40%"><col style="width:12%"><col style="width:23%"><col style="width:25%"></colgroup><thead><tr><th>Бараа</th><th>Тоо</th><th>Үнэ</th><th>Дүн</th></tr></thead><tbody>${receipt.lines.map((line) => `<tr><td><b>${escape(line.name)}</b></td><td data-label="Тоо">${escape(formatPosQuantity(line.qty, line.measureUnit))}</td><td data-label="Үнэ">${money(line.unitPrice)}</td><td data-label="Дүн">${money(line.lineTotal)}</td></tr>`).join("")}</tbody></table>
+    <table><colgroup><col style="width:22%"><col style="width:38%"><col style="width:40%"></colgroup><thead><tr><th>Тоо</th><th>Үнэ</th><th>Дүн</th></tr></thead>${receipt.lines.map((line) => `<tbody class="receipt-line"><tr><td colspan="3" class="receipt-line-name">${escape(line.name)}</td></tr><tr class="receipt-line-values"><td data-label="Тоо">${escape(formatPosQuantity(line.qty, line.measureUnit))}</td><td data-label="Үнэ">${money(line.unitPrice)}</td><td data-label="Дүн">${money(line.lineTotal)}</td></tr></tbody>`).join("")}</table>
     <section class="totals">${pair("Барааны дүн", money(receipt.subTotal))}${receipt.discountTotal ? pair("Хөнгөлөлт", `−${money(receipt.discountTotal)}`) : ""}${pair("Татвар", money(receiptTaxTotal(receipt)))}${pair("НИЙТ ДҮН", money(receipt.grandTotal), "grand-total")}</section>
     <section class="payments">${payments.map((item) => pair(paymentLabels[item.method] || item.method, money(item.amount)) + (item.method === "CASH" && item.cash ? pair("Авсан мөнгө", money(item.cash.receivedAmount)) + pair("Хариулт", money(item.cash.changeAmount)) : "")).join("")}</section>
     ${ebarimt?.status === "SUCCESS" ? `<section class="tax-info">${ebarimt.customerRegNo ? pair("Байгууллагын РД", ebarimt.customerRegNo) : ""}${ebarimt.customerTin ? pair("Байгууллагын TIN", ebarimt.customerTin) : ""}${ebarimt.lottery ? pair("Сугалаа", ebarimt.lottery) : ""}${ebarimt.billId || ebarimt.receiptId ? pair("ДДТД", ebarimt.billId || ebarimt.receiptId || "") : ""}</section>` : ""}
@@ -54,19 +54,11 @@ export const receiptPrintCss = `
   .pair span { flex-shrink: 0; }
   .metadata { font-size: 8pt; padding-bottom: 1mm; }
   .receipt table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  .receipt th { text-align: left; border-top: 1px dashed #444; border-bottom: 1px dashed #444; padding: 1mm 0; font-size: 8pt; }
-  .receipt th:not(:first-child), .receipt td:not(:first-child) { text-align: right; font-size: 8pt; font-variant-numeric: tabular-nums; white-space: normal; overflow-wrap: anywhere; }
-  .receipt td { border-bottom: 1px dotted #bbb; padding: 1.3mm 0; vertical-align: top; overflow-wrap: anywhere; }
-  .receipt td:first-child { padding-right: 2mm; }
-  .receipt th:nth-child(n+3), .receipt td:nth-child(n+3) { padding-left: .7mm; }
-  .receipt .receipt-stacked-table colgroup, .receipt .receipt-stacked-table thead { display: none; }
-  .receipt .receipt-stacked-table, .receipt-stacked-table tbody, .receipt-stacked-table tr, .receipt-stacked-table td { display: block; width: 100%; }
-  .receipt .receipt-stacked-table tr { border-bottom: 1px dotted #bbb; padding: 1mm 0; }
-  .receipt .receipt-stacked-table td { border: 0; padding: .4mm 0; }
-  .receipt .receipt-stacked-table td:not(:first-child) { display: flex; justify-content: space-between; gap: 2mm; }
-  .receipt-stacked-table td:not(:first-child)::before { content: attr(data-label); font-weight: 400; }
-  .receipt small { display: block; margin-top: .5mm; font-size: 8pt; }
-  .receipt tr { break-inside: avoid; }
+  .receipt th { text-align: right; border-top: 1px dashed #444; border-bottom: 1px dashed #444; padding: .6mm 0; font-size: 7pt; font-weight: 500; }
+  .receipt th:first-child, .receipt-line-values td:first-child { text-align: left; }
+  .receipt .receipt-line-name { padding: .8mm 0 .2mm; font-size: 7.5pt; line-height: 1.15; font-weight: 500; overflow-wrap: anywhere; }
+  .receipt-line-values td { text-align: right; padding: 0 0 .7mm; font-size: 7.5pt; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .receipt-line { break-inside: avoid; page-break-inside: avoid; }
   .totals, .payments, .tax-info { border-top: 1px dashed #444; padding-top: 1mm; margin-top: 1mm; }
   .grand-total { border-top: 1px solid #111; margin-top: 1mm; padding-top: 1mm; font-size: 12pt; font-weight: 700; }
   .grand-total strong { font-weight: 700; }
@@ -76,7 +68,7 @@ export const receiptPrintCss = `
   .ebarimt-qr, .receipt-thanks { break-inside: avoid; page-break-inside: avoid; }
   @media print { body[data-thermal-page-mode="receipt"] .receipt-document { break-inside: avoid; page-break-inside: avoid; } }
   .tax-info { font-size: 8pt; }
-  .receipt-thanks { text-align: center; border-top: 1px dashed #444; padding: 4mm 0 1mm; margin-top: 4mm; font-family: Arial, sans-serif; }
+  .receipt-thanks { text-align: center; border-top: 1px dashed #444; padding: 2mm 0 1mm; margin-top: 2mm; font-family: Arial, sans-serif; }
   .receipt-thanks strong { display: block; font-size: 12pt; }
   .receipt-thanks p { margin: 1mm 0 0; font-size: 8pt; }
 
