@@ -1,5 +1,6 @@
-﻿param(
-  [string]$BridgeDir = ""
+param(
+  [string]$BridgeDir = "",
+  [string]$DesktopDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,13 +15,15 @@ if (-not (Test-Path -LiteralPath $PairScript -PathType Leaf)) {
 }
 
 # Respect the user's redirected Desktop, including OneDrive-managed profiles.
-$DesktopDir = [Environment]::GetFolderPath("Desktop")
+if (-not $DesktopDir -or $DesktopDir.Trim().Length -eq 0) {
+  $DesktopDir = [Environment]::GetFolderPath("Desktop")
+}
 if (-not $DesktopDir -or $DesktopDir.Trim().Length -eq 0) {
   throw "The current user's Desktop folder was not found."
 }
 New-Item -ItemType Directory -Path $DesktopDir -Force | Out-Null
 
-$ShortcutPath = Join-Path $DesktopDir "PAX A35 холбох.lnk"
+$ShortcutPath = Join-Path $DesktopDir "PAX A35 Connect.lnk"
 $Shell = New-Object -ComObject WScript.Shell
 $Shortcut = $Shell.CreateShortcut($ShortcutPath)
 $Shortcut.TargetPath = $PairScript

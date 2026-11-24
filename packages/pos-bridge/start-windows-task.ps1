@@ -64,8 +64,28 @@ Add-Content -LiteralPath $LogPath -Value ""
 Add-Content -LiteralPath $LogPath -Value "[$startedAt] Starting MGL POS Bridge..."
 
 if (Test-BridgeListening -Port $BridgePort) {
-  Add-Content -LiteralPath $LogPath -Value "[$startedAt] Bridge is already listening on 127.0.0.1:$BridgePort."
-  exit 0
+  $Provider = "unknown"
+  $Signing = "unknown"
+  try {
+    $Health = Invoke-RestMethod -Uri "http://127.0.0.1:$BridgePort/health" -TimeoutSec 5
+    $Provider = [string]$Health.provider
+    $Signing = [string]$Health.signingEnabled
+  } catch {
+    # A listener alone does not establish that this installed bridge is running.
+  }
+  $Diagnostic = "Port 127.0.0.1:$BridgePort is already occupied (provider=$Provider, signing=$Signing). The installed bridge was NOT started. No existing process was stopped."
+  Add-Content -LiteralPath $LogPath -Value "[$startedAt] ERROR: $Diagnostic"
+  Write-Host "[ERROR] $Diagnostic"
+  Write-Host "[INFO] Identify the listener before closing it. Preserve any pending payment; do not repeat Admin pairing."
+  try {
+    $Listeners = @(Get-NetTCPConnection -LocalPort $BridgePort -State Listen -ErrorAction Stop)
+    foreach ($Listener in $Listeners) {
+      Write-Host "[INFO] Listening process ID: $($Listener.OwningProcess)"
+    }
+  } catch {
+    # Older Windows versions may not have Get-NetTCPConnection.
+  }
+  exit 1
 }
 
 Push-Location $BridgeDir

@@ -2,7 +2,7 @@ name: PAX A35 Windows bridge prerelease
 
 on:
   push:
-    branches: [codex/pax-a35-deploy-20261121]
+    branches: [codex/pax-a35-windows-20261124]
     paths:
       - packages/pos-bridge/**
       - .github/workflows/pos-bridge-windows.yml
@@ -12,15 +12,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: pax-a35-bridge-20261121
+  group: pax-a35-bridge-20261124
   cancel-in-progress: false
 
 env:
-  RELEASE_TAG: pax-a35-bridge-20261121
+  RELEASE_TAG: pax-a35-bridge-20261124
 
 jobs:
   package:
-    if: github.ref == 'refs/heads/codex/pax-a35-deploy-20261121'
+    if: github.ref == 'refs/heads/codex/pax-a35-windows-20261124'
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
@@ -64,6 +64,33 @@ jobs:
               throw "Incomplete distribution: $RelativePath"
             }
           }
+          # Exercise the same Windows PowerShell COM shortcut path as the installer.
+          # ASCII helper content avoids locale-dependent source decoding, while a
+          # Unicode redirected Desktop path still has to work correctly.
+          $ShortcutHelper = Join-Path $SmokeDir "create-pairing-shortcut.ps1"
+          if (@([System.IO.File]::ReadAllBytes($ShortcutHelper) | Where-Object { $_ -gt 127 }).Count -ne 0) {
+            throw "Shortcut helper must contain only portable ASCII bytes"
+          }
+          $UnicodeSuffix = -join ([char[]]@(0x0445, 0x043e, 0x043b, 0x0431, 0x043e, 0x0445))
+          $DesktopCases = @(
+            (Join-Path $env:RUNNER_TEMP "pgw-desktop-ascii"),
+            (Join-Path $env:RUNNER_TEMP ("pgw-desktop-" + $UnicodeSuffix))
+          )
+          $ShortcutShell = New-Object -ComObject WScript.Shell
+          foreach ($DesktopCase in $DesktopCases) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ShortcutHelper -BridgeDir $SmokeDir -DesktopDir $DesktopCase
+            if ($LASTEXITCODE -ne 0) { throw "Shortcut helper failed for test Desktop: $DesktopCase" }
+            $LinkPath = Join-Path $DesktopCase "PAX A35 Connect.lnk"
+            if (-not (Test-Path -LiteralPath $LinkPath -PathType Leaf)) { throw "Shortcut was not saved: $LinkPath" }
+            $Link = $ShortcutShell.CreateShortcut($LinkPath)
+            if (-not $Link.TargetPath.Equals((Join-Path $SmokeDir "pair-bridge.cmd"), [System.StringComparison]::OrdinalIgnoreCase)) {
+              throw "Pairing shortcut targets the wrong command"
+            }
+            if (-not $Link.WorkingDirectory.Equals($SmokeDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+              throw "Pairing shortcut has the wrong working directory"
+            }
+          }
+          Write-Host "Actual Windows COM shortcut creation passed for ASCII and non-ASCII Desktop paths."
           $Listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
           $Listener.Start()
           $Port = $Listener.LocalEndpoint.Port
@@ -93,6 +120,28 @@ jobs:
             }
             if (-not $Ready) { throw "Packaged bridge failed mock health smoke test" }
             Write-Host "Bundled Windows Node and serialport dependency loaded; mock health passed. No serial scan or bank transaction was performed."
+
+            # A mock launched outside the installed directory must not make the
+            # paired startup wrapper report success or kill that other listener.
+            $InstalledDir = Join-Path $env:RUNNER_TEMP "pgw-paired-startup-test"
+            New-Item -ItemType Directory -Path $InstalledDir -Force | Out-Null
+            @("@echo off", "echo unexpected-start>started-unexpectedly.txt", "exit /b 42") | Set-Content -LiteralPath (Join-Path $InstalledDir "start-windows.cmd") -Encoding ascii
+            "BRIDGE_PORT=$Port" | Set-Content -LiteralPath (Join-Path $InstalledDir "bridge.env") -Encoding ascii
+            $PairedState = Join-Path $env:RUNNER_TEMP "pgw-paired-test-state"
+            New-Item -ItemType Directory -Path $PairedState -Force | Out-Null
+            @{ bindingId = "ci-binding"; registerId = "ci-register"; deviceId = ("c" * 32); secret = ("e" * 64); apiUrl = "http://127.0.0.1:9/api" } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PairedState "bridge-credentials.json") -Encoding ascii
+            $env:BRIDGE_DATA_DIR = $PairedState
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $SmokeDir "start-windows-task.ps1") -BridgeDir $InstalledDir
+            if ($LASTEXITCODE -eq 0) { throw "Paired startup falsely succeeded while an unrelated mock retained the port" }
+            if (Test-Path -LiteralPath (Join-Path $InstalledDir "started-unexpectedly.txt")) { throw "Startup launched a second bridge on an occupied port" }
+            if ($BridgeProcess.HasExited) { throw "Startup killed an existing listener instead of diagnosing it" }
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $SmokeDir "check-bridge-ready.ps1") -BridgeDir $InstalledDir -TimeoutSeconds 2
+            if ($LASTEXITCODE -eq 0) { throw "Readiness falsely accepted the unrelated mock listener" }
+            $StillMock = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 2
+            if ($StillMock.provider -ne "mock") { throw "Occupied-port test changed the running provider" }
+            Write-Host "Paired startup correctly rejected an unrelated mock listener without stopping it."
+            # The expected nonzero startup probe is not a workflow failure.
+            $global:LASTEXITCODE = 0
           } catch {
             if (Test-Path -LiteralPath $Stderr) { Get-Content -LiteralPath $Stderr }
             throw
@@ -114,9 +163,9 @@ jobs:
           Source commit: $env:GITHUB_SHA
           Build: https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
 
-          Built and unit-tested on Windows with Node 22. The extracted distribution's bundled runtime passed mock health; no physical terminal was scanned or charged. Actual bank USB driver and PAX hardware acceptance remain required. This release does not claim Windows 7 support.
+          Built and unit-tested on Windows with Node 22. Actual Windows PowerShell COM shortcut creation was verified for ASCII and non-ASCII Desktop directories. The extracted distribution's bundled runtime passed mock health; no physical terminal was scanned or charged. Actual bank USB driver and PAX hardware acceptance remain required. This release does not claim Windows 7 support.
 
-          Finish pending transactions before upgrading. Preserve the local payment journal. The installer creates the Desktop shortcut PAX A35 holboh and prompts for the Admin pairing link unless a valid pairing already exists. The cloud deployment does not update cashier PCs automatically.
+          Finish pending transactions before upgrading. Preserve the local payment journal. The installer creates the Desktop shortcut PAX A35 Connect and prompts for the Admin pairing link unless a valid pairing already exists. The cloud deployment does not update cashier PCs automatically.
           "@ | Set-Content -LiteralPath (Join-Path $OutputRoot "RELEASE-NOTES.md") -Encoding utf8
       - name: Retain verified Windows assets
         uses: actions/upload-artifact@v4
@@ -131,7 +180,7 @@ jobs:
             C:\tmp\mgl-pos-bridge-release\RELEASE-NOTES.md
 
   publish:
-    if: github.ref == 'refs/heads/codex/pax-a35-deploy-20261121'
+    if: github.ref == 'refs/heads/codex/pax-a35-windows-20261124'
     needs: package
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -161,7 +210,7 @@ jobs:
           gh release create "$RELEASE_TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "PAX A35 Windows bridge 2026-11-21" \
+            --title "PAX A35 Windows bridge 2026-11-24" \
             --notes-file RELEASE-NOTES.md \
             --prerelease \
             mgl-pos-bridge-android-pgw.zip \

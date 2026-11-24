@@ -23,8 +23,8 @@ that register using an Admin pairing code.
   distribution's bundled runtime in mock mode. It does not scan USB terminals,
   charge a card, or install startup tasks on the runner.
 - The release workflow triggers only on bridge/workflow changes pushed to
-  `codex/pax-a35-deploy-20261121`, or an explicit dispatch on that branch. It
-  publishes the prerelease tag `pax-a35-bridge-20261121` only after its Windows
+  `codex/pax-a35-windows-20261124`, or an explicit dispatch on that branch. It
+  publishes the prerelease tag `pax-a35-bridge-20261124` only after its Windows
   job succeeds. Existing tags/assets are never overwritten automatically.
 - Authoring the workflow is not publication. Verify the run and all release
   assets before enabling an Admin download link. Cloud deployment alone is not
@@ -51,7 +51,7 @@ build and checksum verification:
 - `SHA256SUMS.txt`
 
 The immutable release URL prefix is
-`https://github.com/HPlaptopuserr/MglStoreWeb/releases/download/pax-a35-bridge-20261121/`.
+`https://github.com/HPlaptopuserr/MglStoreWeb/releases/download/pax-a35-bridge-20261124/`.
 Confirm each asset returns successfully before wiring it into Admin. Publication
 requires repository Actions to be enabled and the publish job's `GITHUB_TOKEN`
 to permit `contents: write` and tag/release creation. The package job has only
@@ -80,7 +80,7 @@ pairing also checks the API's register guard. Never remove a guard/journal to ma
 an upgrade proceed. Preserve `%LOCALAPPDATA%\MGLStore\pos-bridge-data` (or the
 configured `BRIDGE_DATA_DIR`) and the existing installed `bridge.env`.
 
-The installer creates the per-user Desktop shortcut **PAX A35 холбох** and uses
+The installer creates the per-user Desktop shortcut **PAX A35 Connect** and uses
 `pair.js --if-needed`. Only an existing valid, non-revoked pairing skips the
 installation prompt. A new software installation or upgrade with only a legacy
 shared key must deliberately pair from Admin; an environment key alone does not
@@ -89,7 +89,19 @@ direct advanced/development use, but the Windows installer does not silently
 leave the new software in an unenrolled keyed mode. Existing OLD cashier bridge
 binaries are not touched by a cloud-only deployment.
 
-The installer always creates the shortcut. To deliberately migrate an idle
+The installer attempts to create the ASCII-named shortcut. If Desktop permissions
+or COM prevent saving it, the installer records a warning and continues with the
+actual Admin pairing; `pair-bridge.cmd` in the installed folder remains available.
+The release job executes real Windows PowerShell COM shortcut creation against
+ASCII and non-ASCII temporary Desktop paths and verifies the target/working folder.
+
+If the configured port is already occupied, startup reports an error with the
+observed provider/signing status and available listener process ID. It does not
+claim the installed bridge started, kill an unknown listener, or ask the user to
+repeat a successful Admin pairing. Identify the old listener and reconcile any
+real terminal operation before closing it.
+
+To deliberately migrate an idle
 register, open it and paste the Admin connection link once; the explicit shortcut
 does not use `--if-needed`. COM discovery is the default for a new installation,
 so there is no normal URL, secret or COM prompt.

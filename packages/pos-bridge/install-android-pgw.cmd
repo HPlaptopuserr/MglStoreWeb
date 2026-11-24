@@ -214,17 +214,21 @@ if not exist "create-pairing-shortcut.ps1" (
   exit /b 1
 )
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0create-pairing-shortcut.ps1" -BridgeDir "%CD%"
+set "SHORTCUT_LOG=%TEMP%\mgl-pos-bridge-shortcut.log"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0create-pairing-shortcut.ps1" -BridgeDir "%CD%" >"%SHORTCUT_LOG%" 2>&1
 if errorlevel 1 (
-  echo [ERROR] Desktop holboh icon uusgej chadsangui.
-  if not defined NO_PAUSE pause
-  exit /b 1
+  echo [WARN] Desktop shortcut could not be created. Continuing with Admin pairing.
+  echo [INFO] Shortcut log: %SHORTCUT_LOG%
+  echo [INFO] You can reconnect later by running "%CD%\pair-bridge.cmd".
+  if exist "%SHORTCUT_LOG%" type "%SHORTCUT_LOG%"
+) else (
+  echo [OK] Desktop shortcut: PAX A35 Connect
 )
 
 echo [SETUP] Admin PAX A35 holboltiin kodiig shalgaj baina...
 "%NODE_EXE%" "%CD%\dist\pair.js" --if-needed
 if errorlevel 1 (
-  echo [ERROR] Admin deer shine holboh kod uusgeed Desktop deerh PAX A35 holboh icon-iig ajilluulna uu.
+  echo [ERROR] Admin deer shine holboh kod uusgeed Desktop deerh PAX A35 Connect icon esvel pair-bridge.cmd-iig ajilluulna uu.
   if not defined NO_PAUSE pause
   exit /b 1
 )
@@ -245,7 +249,7 @@ echo.
 echo [OK] Suulgalt duuslaa.
 echo [OK] PC login hiisnii daraa bridge automataar asna.
 echo [OK] Bridge untrah uyd Windows dahin asaah gej oroldono.
-echo [INFO] Desktop deerh PAX A35 holboh icon-oos Admin holboosiig neg udaa paste hiij holbono.
+echo [INFO] Desktop deerh PAX A35 Connect icon-oos Admin holboosiig neg udaa paste hiij holbono.
 echo [OK] Health URL: http://127.0.0.1:7420/health
 echo.
 

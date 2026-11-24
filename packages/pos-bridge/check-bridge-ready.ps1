@@ -26,16 +26,24 @@ if (Test-Path -LiteralPath $EnvPath) {
   }
 }
 
+$script:WrongProviderDetected = $false
+
 function Test-BridgeReady {
   param([int]$Port)
   try {
     $Health = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 5
-    if (-not $Health.ok -or $Health.provider -ne "android-pgw") {
+    if ($Health.provider -ne "android-pgw") {
+      Write-Host "[ERROR] Port $Port is occupied by provider '$($Health.provider)', not the installed Android PGW bridge."
+      Write-Host "[INFO] Identify the old listener before closing it. No process was stopped; do not repeat Admin pairing."
+      $script:WrongProviderDetected = $true
+      return $false
+    }
+    if (-not $Health.ok) {
       Write-Host "[WAIT] Android PGW terminal not ready: $($Health.message)"
       return $false
     }
     if (-not $Health.signingEnabled) {
-      Write-Host "[ERROR] Set bridge.env BRIDGE_SHARED_SECRET to match API POS_BRIDGE_SHARED_SECRET."
+      Write-Host "[ERROR] Bridge signing is disabled. Another or older bridge may be using this port."
       return $false
     }
     return $true
@@ -51,6 +59,7 @@ while ((Get-Date) -lt $Deadline) {
     exit 0
   }
 
+  if ($script:WrongProviderDetected) { break }
   Start-Sleep -Seconds 1
 }
 
