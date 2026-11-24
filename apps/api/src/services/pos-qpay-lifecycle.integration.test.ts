@@ -35,13 +35,15 @@ test("durable QR lifecycle completes offline baskets once and keeps uncertain pa
   const originalFetch = globalThis.fetch;
   const bankStates = new Map<string, "PAID" | "UNPAID" | "UNKNOWN">();
   let unavailable = false;
+  let cancellationFails = false;
   const requests: string[] = [];
   globalThis.fetch = async (input, init) => {
     const url = String(input);
     if (url.startsWith("http://127.0.0.1:")) return originalFetch(input, init);
     requests.push(url);
     if (url.endsWith("/login")) return Response.json({ status: "000", entity: "lifecycle-test-token" });
-    if (url.endsWith("/cancelQr")) return Response.json({ status: "000" });
+    if (url.endsWith("/cancelQr")) return Response.json(cancellationFails
+      ? { status: "001", message: "Provider system error" } : { status: "000" });
     assert.ok(url.endsWith("/checkInvoice"), "automatic recovery must never create or refund a bank charge");
     if (unavailable) throw new Error("Bank offline");
     const request: unknown = JSON.parse(String(init?.body));
@@ -197,6 +199,29 @@ test("durable QR lifecycle completes offline baskets once and keeps uncertain pa
       await processPosQrInvoiceLifecycle(f.invoice.id);
       assert.equal(await countSales(f.register.id), 1);
       assert.equal(await stock(f.product.id), 4);
+    });
+    await t.test("bank cancellation failure cannot block the next cash customer and late money remains recoverable without overselling", async () => {
+      const f = await fixture();
+      await prisma.product.update({ where: { id: f.product.id }, data: { stock: 1 } });
+      await prisma.qPayInvoice.update({ where: { id: f.invoice.id }, data: { status: "PENDING", paidAt: null } });
+      await prisma.posCardStockReservation.create({ data: { organizationId: org.id, registerId: f.register.id,
+        clientSaleId: f.checkout.clientSaleId, productId: f.product.id, quantity: 1 } });
+      bankStates.set(f.invoice.id, "UNPAID"); cancellationFails = true;
+      try { await processPosQrInvoiceLifecycle(f.invoice.id); }
+      finally { cancellationFails = false; }
+      assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
+      const cash = await executePosSale({ ...f.sale, clientSaleId: randomUUID(), paymentMethod: "CASH",
+        paymentBreakdown: [{ method: "CASH", amount: 100 }] }, actor);
+      assert.equal(cash.status, 201, JSON.stringify(cash));
+      assert.equal(await stock(f.product.id), 0);
+      bankStates.set(f.invoice.id, "PAID");
+      await processPosQrInvoiceLifecycle(f.invoice.id);
+      await prisma.qPayInvoice.update({ where: { id: f.invoice.id }, data: { paidAt: new Date(Date.now() - 30_000) } });
+      await processPosQrInvoiceLifecycle(f.invoice.id);
+      const current = await prisma.qPayInvoice.findUniqueOrThrow({ where: { id: f.invoice.id } });
+      assert.equal(current.status, "PAID"); assert.equal(current.consumedAt, null);
+      assert.equal(await countSales(f.register.id), 1); assert.equal(await stock(f.product.id), 0);
+      assert.equal((current.webhookPayload as Prisma.JsonObject).autoFinalizeReviewRequired, "ORIGINAL_SALE_VALIDATION_REQUIRES_RETRY");
     });
     await t.test("unknown responses and provider outages never make an invoice disappear from accounting", async () => {
       for (const offline of [false, true]) {

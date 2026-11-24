@@ -673,11 +673,11 @@ export async function cancelSystemQrInvoice(
   params: SystemQrCancelInvoiceParams,
   username?: string,
   password?: string,
-) {
+): Promise<void> {
   const { deeplinkBaseUrl, qrpayBaseUrl } = systemQrEnv();
 
   try {
-    const dynamicQrResult = await fetchSystemQrJsonWithTokenRetry<any>(
+    const dynamicQrResult = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string }>(
       (token) =>
         paymentProviderFetch(`${deeplinkBaseUrl}/subMerchant/cancelQr`, {
           method: "POST",
@@ -698,7 +698,7 @@ export async function cancelSystemQrInvoice(
 
     // Some Minu environments expose cancellation only through the original
     // qrpay endpoint even though create/check use the Dynamic QR endpoints.
-    const legacyResult = await fetchSystemQrJsonWithTokenRetry<any>(
+    const legacyResult = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string }>(
       (token) =>
         paymentProviderFetch(`${qrpayBaseUrl}/cancelQr`, {
           method: "POST",
@@ -721,8 +721,8 @@ export async function cancelSystemQrInvoice(
         }`,
       );
     }
-  } catch (error: any) {
-    console.error("Minu Dynamic QR cancel error:", error.message);
+  } catch (error: unknown) {
+    console.error("Minu Dynamic QR cancel error:", error instanceof Error ? error.message : "Unknown provider error");
     throw error;
   }
 }

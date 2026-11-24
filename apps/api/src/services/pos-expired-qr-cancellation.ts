@@ -1,6 +1,6 @@
 import { AuditAction, PosQPayStatus, prisma, type Prisma } from "@mgl/database";
 import { checkoutFromPayload, isQrCancellationConfirmed, releaseResolvedCheckoutReservation, sameCheckout } from "./pos-card-checkout";
-import { resolveSystemQrConfig, isSystemQrAuthenticationError, type ReconciliablePosQPayInvoice } from "./pos-qpay-reconciliation";
+import { resolveSystemQrConfig, isSystemQrAuthenticationError, reconcilePosQrPayment, type ReconciliablePosQPayInvoice } from "./pos-qpay-reconciliation";
 import { usesOrganizationMerchant } from "./pos-merchant-scope";
 import { cancelSystemQrInvoice } from "./systemqr";
 import { lockOrganizationInventory } from "./vendor-inventory-warehouse.service";
@@ -32,33 +32,55 @@ export async function cancelVerifiedUnpaidExpiredQr(
     usesOrganizationMerchant(payload) ? null : invoice.register);
   const merchantCode = String(payload.merchantCode || resolved?.merchantCode || "").trim();
   if (!merchantCode) return;
+  let cancellationConfirmed = false;
   try {
-    await cancelSystemQrInvoice({ merchantCode, invoiceNumber: providerInvoiceId }, resolved?.username, resolved?.password);
+    try {
+      await cancelSystemQrInvoice({ merchantCode, invoiceNumber: providerInvoiceId }, resolved?.username, resolved?.password);
+    } catch (error: unknown) {
+      if (!resolved?.password || !isSystemQrAuthenticationError(error)) throw error;
+      await cancelSystemQrInvoice({ merchantCode, invoiceNumber: providerInvoiceId });
+    }
+    cancellationConfirmed = true;
   } catch (error: unknown) {
-    if (!resolved?.password || !isSystemQrAuthenticationError(error)) throw error;
-    await cancelSystemQrInvoice({ merchantCode, invoiceNumber: providerInvoiceId });
+    // Bank cancellation is independent of inventory hold expiry. Check again
+    // AFTER the failed request; never release using only the earlier snapshot.
+    if ((await reconcilePosQrPayment(invoice)).state !== "UNPAID") throw error;
   }
   await prisma.$transaction(async tx => {
     await lockOrganizationInventory(tx, organizationId);
     await tx.$queryRaw`SELECT "id" FROM "QPayInvoice" WHERE "id" = ${invoice.id} FOR UPDATE`;
     const current = await tx.qPayInvoice.findUnique({ where: { id: invoice.id } });
     if (!current || current.status === PosQPayStatus.PAID || current.paidAt || current.consumedAt || current.saleReference ||
-        current.organizationId !== organizationId || current.expiresAt > new Date()) return;
+        current.organizationId !== organizationId || current.expiresAt > new Date() ||
+        Number(current.amount) !== Number(invoice.amount)) return;
     const currentPayload = jsonObject(current.webhookPayload);
     const currentCheckout = checkoutFromPayload(current.webhookPayload);
     if (!currentCheckout || !sameCheckout(checkout, currentCheckout) ||
         currentPayload.providerInvoiceId !== payload.providerInvoiceId || currentPayload.provider !== payload.provider ||
         currentPayload.merchantCode !== payload.merchantCode || isQrCancellationConfirmed(currentPayload)) return;
+    const checkedAt = new Date().toISOString();
+    const audit = !cancellationConfirmed ? await tx.auditLog.create({ data: {
+      action: AuditAction.POS_REGISTER_UPDATED,
+      meta: { event: "POS_EXPIRED_UNPAID_QR_INVENTORY_RELEASE", invoiceId: current.id,
+        organizationId, clientSaleId: checkout.clientSaleId, providerInvoiceId, merchantCode,
+        amount: Number(current.amount), expiresAt: current.expiresAt.toISOString(),
+        providerState: "UNPAID", checkedAt, providerCancellationConfirmed: false },
+    } }) : null;
     await tx.qPayInvoice.update({ where: { id: current.id }, data: {
       status: PosQPayStatus.EXPIRED,
-      webhookPayload: { ...currentPayload, providerCancellationConfirmed: true,
-        cancelledAt: new Date().toISOString(), cancelReason: "EXPIRED_UNPAID_AUTO_CANCEL" },
+      webhookPayload: audit
+        ? { ...currentPayload, inventoryReleaseAuditId: audit.id,
+            inventoryHoldExpiredAt: checkedAt, providerCancellationConfirmed: false,
+            requiresPaymentReconciliation: true, lastLifecycleCheckAt: checkedAt }
+        : { ...currentPayload, providerCancellationConfirmed: true,
+            cancelledAt: checkedAt, cancelReason: "EXPIRED_UNPAID_AUTO_CANCEL" },
     } });
     const released = await releaseResolvedCheckoutReservation(tx, organizationId, checkout.clientSaleId);
     await tx.auditLog.create({ data: {
       action: AuditAction.POS_REGISTER_UPDATED,
-      meta: { event: "POS_EXPIRED_UNPAID_QR_CANCELLED", invoiceId: current.id,
-        organizationId: current.organizationId, clientSaleId: checkout.clientSaleId, released },
+      meta: { event: cancellationConfirmed ? "POS_EXPIRED_UNPAID_QR_CANCELLED" : "POS_EXPIRED_UNPAID_QR_STOCK_RELEASED",
+        invoiceId: current.id, organizationId: current.organizationId,
+        clientSaleId: checkout.clientSaleId, released, providerCancellationConfirmed: cancellationConfirmed },
     } });
   });
 }

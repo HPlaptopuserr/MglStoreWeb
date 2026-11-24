@@ -1,4 +1,4 @@
-import { Prisma } from "@mgl/database";
+import { AuditAction, Prisma, type PosQPayStatus } from "@mgl/database";
 import { calculatePosLineAmounts, normalizePosMeasureUnit, toPosStoredStockQuantity } from "@mgl/types";
 import { lockOrganizationInventory } from "./vendor-inventory-warehouse.service";
 import { assertProductInventoryOwnership } from "./warehouse-product-ownership";
@@ -299,7 +299,45 @@ export async function reserveCardCheckout(
     fail("Картын төлбөр сагсны нийт дүнгээс их байна");
 }
 
-/** Retain inventory while any bank request can still settle this basket. */
+interface QrInventoryReleaseInvoice {
+  id: string;
+  organizationId: string | null;
+  status: PosQPayStatus;
+  paidAt: Date | null;
+  expiresAt: Date;
+  amount: Prisma.Decimal;
+  webhookPayload: Prisma.JsonValue | null;
+}
+
+/** A JSON flag alone cannot waive stock protection; require server audit evidence. */
+async function hasExpiredQrInventoryRelease(
+  tx: Prisma.TransactionClient,
+  invoice: QrInventoryReleaseInvoice,
+  clientSaleId: string,
+): Promise<boolean> {
+  const payload = invoice.webhookPayload;
+  if (!invoice.organizationId || invoice.status !== "EXPIRED" || invoice.paidAt || invoice.expiresAt > new Date() ||
+      !payload || typeof payload !== "object" || Array.isArray(payload) ||
+      typeof payload.inventoryReleaseAuditId !== "string" || payload.provider !== "SYSTEMQR" ||
+      typeof payload.providerInvoiceId !== "string" || typeof payload.merchantCode !== "string") return false;
+  const proof = await tx.auditLog.findFirst({ where: {
+    id: payload.inventoryReleaseAuditId, action: AuditAction.POS_REGISTER_UPDATED,
+    AND: [
+      { meta: { path: ["event"], equals: "POS_EXPIRED_UNPAID_QR_INVENTORY_RELEASE" } },
+      { meta: { path: ["invoiceId"], equals: invoice.id } },
+      { meta: { path: ["organizationId"], equals: invoice.organizationId } },
+      { meta: { path: ["clientSaleId"], equals: clientSaleId } },
+      { meta: { path: ["providerInvoiceId"], equals: payload.providerInvoiceId } },
+      { meta: { path: ["merchantCode"], equals: payload.merchantCode } },
+      { meta: { path: ["amount"], equals: Number(invoice.amount) } },
+      { meta: { path: ["expiresAt"], equals: invoice.expiresAt.toISOString() } },
+      { meta: { path: ["providerState"], equals: "UNPAID" } },
+    ],
+  }, select: { id: true } });
+  return Boolean(proof);
+}
+
+/** Approved/unknown payments retain inventory; verified expired unpaid QR holds can expire independently. */
 export async function releaseResolvedCheckoutReservation(
   tx: Prisma.TransactionClient,
   organizationId: string,
@@ -310,15 +348,24 @@ export async function releaseResolvedCheckoutReservation(
     organizationId, consumedAt: null, status: { in: ["PENDING", "APPROVED", "FAILED"] },
     providerPayload: { path: ["checkout", "clientSaleId"], equals: clientSaleId },
   } });
+  // QR callbacks lock invoice rows without acquiring the inventory lock. Read
+  // their final state under the same row locks before releasing a basket hold.
+  await tx.$queryRaw`SELECT "id" FROM "QPayInvoice"
+    WHERE "organizationId" = ${organizationId} AND "consumedAt" IS NULL
+      AND "webhookPayload" #>> '{checkout,clientSaleId}' = ${clientSaleId}
+    ORDER BY "id" FOR UPDATE`;
   const invoices = await tx.qPayInvoice.findMany({ where: {
     organizationId, consumedAt: null,
     webhookPayload: { path: ["checkout", "clientSaleId"], equals: clientSaleId },
-  }, select: { status: true, webhookPayload: true } });
-  const unresolvedQr = invoices.some(invoice => {
+  }, select: { id: true, organizationId: true, status: true, paidAt: true,
+    expiresAt: true, amount: true, webhookPayload: true } });
+  const unresolvedInvoices = await Promise.all(invoices.map(async invoice => {
     const payload = invoice.webhookPayload;
-    return invoice.status === "PAID" || !payload || typeof payload !== "object" ||
-      Array.isArray(payload) || !isQrCancellationConfirmed(payload);
-  });
+    if (invoice.status === "PAID" || invoice.paidAt || !payload || typeof payload !== "object" ||
+        Array.isArray(payload)) return true;
+    return !isQrCancellationConfirmed(payload) && !await hasExpiredQrInventoryRelease(tx, invoice, clientSaleId);
+  }));
+  const unresolvedQr = unresolvedInvoices.some(Boolean);
   if (cards || unresolvedQr) return 0;
   const released = await tx.posCardStockReservation.deleteMany({ where: { organizationId, clientSaleId } });
   return released.count;

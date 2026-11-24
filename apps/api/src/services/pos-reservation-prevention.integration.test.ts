@@ -16,6 +16,7 @@ test("expired QR cancellation and cross-store reservation repair retain every un
   const originalFetch = globalThis.fetch;
   let cancelFails = false;
   let unknown = false;
+  let bankPaid = false;
   let afterCancel: (() => Promise<void>) | undefined;
   let cancellations = 0;
   globalThis.fetch = async (input, init) => {
@@ -23,12 +24,12 @@ test("expired QR cancellation and cross-store reservation repair retain every un
     if (url.endsWith("/login")) return Response.json({ status: "000", entity: "reservation-test-token" });
     const body = JSON.parse(String(init?.body)) as { invoiceNumber: string };
     if (url.endsWith("/checkInvoice")) return Response.json({ status: "000", entity: unknown ? null : {
-      status: null, invoiceNumber: body.invoiceNumber, amount: 100,
+      status: bankPaid ? "000" : null, invoiceNumber: body.invoiceNumber, amount: 100,
     } });
     assert.ok(url.endsWith("/cancelQr"), `Unexpected provider operation: ${url}`);
     cancellations += 1;
-    if (cancelFails) throw new Error("Bank cancellation unavailable");
     if (afterCancel) { const run = afterCancel; afterCancel = undefined; await run(); }
+    if (cancelFails) throw new Error("Bank cancellation unavailable");
     return Response.json({ status: "000" });
   };
   const fixture = async () => {
@@ -69,12 +70,19 @@ test("expired QR cancellation and cross-store reservation repair retain every un
       assert.equal(cancellations, before + 1);
       assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 1);
     });
-    await t.test("cancellation failure and ambiguous bank responses retain reservations", async () => {
+    await t.test("failed cancellation frees only a freshly verified expired unpaid hold without inventing bank cancellation", async () => {
       const failed = await fixture();
       cancelFails = true;
-      try { await assert.rejects(processPosQrInvoiceLifecycle(failed.invoice.id)); }
+      try { await processPosQrInvoiceLifecycle(failed.invoice.id); }
       finally { cancelFails = false; }
-      assert.equal(await failed.count(), 1);
+      assert.equal(await failed.count(), 0);
+      const current = await prisma.qPayInvoice.findUniqueOrThrow({ where: { id: failed.invoice.id } });
+      const payload = current.webhookPayload as Prisma.JsonObject;
+      assert.equal(payload.providerCancellationConfirmed, false);
+      assert.equal(payload.cancelledAt, undefined);
+      assert.equal(payload.requiresPaymentReconciliation, true);
+      assert.equal(typeof payload.inventoryReleaseAuditId, "string");
+      assert.equal(current.consumedAt, null);
       const ambiguous = await fixture();
       unknown = true;
       const before = cancellations;
@@ -82,6 +90,19 @@ test("expired QR cancellation and cross-store reservation repair retain every un
       finally { unknown = false; }
       assert.equal(await ambiguous.count(), 1);
       assert.equal(cancellations, before);
+    });
+    await t.test("a failed cancellation followed by unknown evidence or a late payment cannot release stock", async () => {
+      for (const paid of [false, true]) {
+        const f = await fixture();
+        cancelFails = true;
+        afterCancel = async () => { if (paid) bankPaid = true; else unknown = true; };
+        try { await assert.rejects(processPosQrInvoiceLifecycle(f.invoice.id)); }
+        finally { cancelFails = false; bankPaid = false; unknown = false; }
+        assert.equal(await f.count(), 1);
+        const current = await prisma.qPayInvoice.findUniqueOrThrow({ where: { id: f.invoice.id } });
+        assert.equal((current.webhookPayload as Prisma.JsonObject).inventoryReleaseAuditId, undefined);
+        if (paid) assert.equal(current.status, "PAID");
+      }
     });
     await t.test("a paid callback racing cancellation is preserved with its stock reservation", async () => {
       const f = await fixture();
@@ -102,10 +123,29 @@ test("expired QR cancellation and cross-store reservation repair retain every un
       assert.equal(cancellations, before);
       assert.equal(await future.count(), 1);
       const mixed = await fixture();
-      await prisma.cardPaymentAttempt.create({ data: { organizationId: mixed.org.id, registerId: mixed.register.id,
+      const card = await prisma.cardPaymentAttempt.create({ data: { organizationId: mixed.org.id, registerId: mixed.register.id,
         terminalId: randomUUID(), amount: 50, status: "FAILED", providerPayload: { provider: "MINU_AGENT", checkout: mixed.checkout } } });
-      await processPosQrInvoiceLifecycle(mixed.invoice.id);
+      cancelFails = true;
+      try { await processPosQrInvoiceLifecycle(mixed.invoice.id); }
+      finally { cancelFails = false; }
       assert.equal(await mixed.count(), 1);
+      await prisma.cardPaymentAttempt.update({ where: { id: card.id }, data: { status: "DECLINED" } });
+      for (let i = 0; i < 6; i += 1) await reconcileResolvedPosReservations();
+      assert.equal(await mixed.count(), 0);
+    });
+    await t.test("untrusted JSON and another invoice's release audit cannot waive a reservation", async () => {
+      const owner = await fixture();
+      cancelFails = true;
+      try { await processPosQrInvoiceLifecycle(owner.invoice.id); }
+      finally { cancelFails = false; }
+      const proof = (await prisma.qPayInvoice.findUniqueOrThrow({ where: { id: owner.invoice.id } })).webhookPayload as Prisma.JsonObject;
+      for (const marker of [randomUUID(), String(proof.inventoryReleaseAuditId)]) {
+        const f = await fixture();
+        await prisma.qPayInvoice.update({ where: { id: f.invoice.id }, data: { status: "EXPIRED",
+          webhookPayload: { ...f.payload, inventoryReleaseAuditId: marker, inventoryHoldExpiredAt: new Date().toISOString() } } });
+        for (let i = 0; i < 6; i += 1) await reconcileResolvedPosReservations();
+        assert.equal(await f.count(), 1);
+      }
     });
     await t.test("repair clears resolved and orphaned baskets across stores while retaining pending and paid ones", async () => {
       const cancelled = await fixture();
