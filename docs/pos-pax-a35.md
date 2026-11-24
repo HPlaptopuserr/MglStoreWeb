@@ -28,13 +28,20 @@ loopback bridge URL automatically. New installations use COM discovery by defaul
 Users do not edit secret, URL, or COM environment files for this flow.
 
 Each register gets an independent credential generation. The database stores a
-random salt and the hash of a pending code, not a plaintext bridge key. The API
-derives the child key with domain-separated HMAC using its existing JWT_SECRET;
-there is no new POS secret environment variable to fill in. Production pairing
-requires a non-default JWT_SECRET of at least 32 characters. Keep this existing
-authentication root stable while payments are unresolved. Rotating it invalidates
-paired devices and requires new Admin pairing after all payments are reconciled;
-there is no fallback to a deployment-wide key for an enrolled/revoked register.
+random salt and the hash of a pending code, not a plaintext bridge key. Configure
+a server-only `POS_BRIDGE_PAIRING_SECRET` with at least 32 random characters for
+new pairings. Do not change `JWT_SECRET` to enable pairing or expose either root
+in `NEXT_PUBLIC_*` settings. Adding the dedicated root does not log users out.
+
+New dedicated-root claims store a `v2:` salt prefix. Existing unprefixed bindings
+continue deriving their original key from `JWT_SECRET`, even after the dedicated
+root is added. Versioned bindings never fall back to JWT if the dedicated root is
+missing or invalid. Keep each root stable while its bindings are in use; rotation
+requires reconciling payments and explicitly pairing those devices again. There
+is no fallback to a deployment-wide bridge key for an enrolled/revoked register.
+Without a dedicated root, the legacy production requirement remains a non-default
+JWT root of at least 32 characters. No database migration or bridge reinstall is
+needed for this server-only root selection change.
 
 The code/activation link is shown only in the issuing Admin panel. No bridge key
 is exposed to Admin or Vendor JavaScript. The desktop exchanges it over HTTPS

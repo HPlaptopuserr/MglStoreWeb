@@ -5,6 +5,7 @@ import { readSignedBridgeResult } from "./android-pgw-bridge";
 import {
   assertBridgeCanChange,
   bridgeRootKey,
+  createBridgeCredentialSalt,
   BridgePairingError,
   deriveBridgeSecret,
   hashPairingCode,
@@ -139,7 +140,7 @@ export async function claimBridgePairing(code: string, deviceId: string) {
         "Кассын картын тохиргоо өөрчлөгдсөн байна",
       );
     await assertBridgeCanChange(tx, candidate.registerId);
-    const salt = crypto.randomBytes(32).toString("hex");
+    const salt = createBridgeCredentialSalt();
     const now = new Date();
     const claimed = await tx.posBridgeBinding.updateMany({
       where: {
@@ -182,7 +183,7 @@ export async function claimBridgePairing(code: string, deviceId: string) {
       bindingId: candidate.id,
       registerId: register.id,
       deviceId,
-      secret: deriveBridgeSecret(register.id, salt, bridgeRootKey()),
+      secret: deriveBridgeSecret(register.id, salt, bridgeRootKey(salt)),
     };
   });
 }
@@ -247,17 +248,16 @@ export async function recordBridgeHeartbeat(body: string, signature: string) {
       binding.register.cardProviderType !== "ANDROID_PGW"
     )
       throw new BridgePairingError(401, "Bridge холбоос хүчингүй байна");
+    // Configuration outages are retryable 503s. Only an invalid device proof
+    // becomes 401, because the desktop permanently revokes credentials on 401.
+    const secret = deriveBridgeSecret(
+      binding.registerId,
+      binding.credentialSalt,
+      bridgeRootKey(binding.credentialSalt),
+    );
     let data: Record<string, unknown>;
     try {
-      data = readSignedBridgeResult(
-        body,
-        signature,
-        deriveBridgeSecret(
-          binding.registerId,
-          binding.credentialSalt,
-          bridgeRootKey(),
-        ),
-      );
+      data = readSignedBridgeResult(body, signature, secret);
     } catch {
       throw new BridgePairingError(401, "Invalid bridge signature");
     }

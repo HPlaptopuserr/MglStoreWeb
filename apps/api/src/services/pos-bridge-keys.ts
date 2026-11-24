@@ -21,18 +21,58 @@ export function deriveBridgeSecret(
     .digest("hex");
 }
 
-export function bridgeRootKey(): string {
+const DEDICATED_SALT_PREFIX = "v2:";
+const PLACEHOLDER_KEYS = new Set([
+  "dev-secret-change-me",
+  "replace-with-a-long-random-secret",
+  "replace-with-the-api-shared-secret",
+  "your-secret-key-at-least-32-characters-long",
+]);
+
+const dedicatedRoot = () =>
+  String(process.env.POS_BRIDGE_PAIRING_SECRET || "").trim();
+
+/** Stored salts select their original root; adding an env key never rotates devices. */
+export function bridgeRootKey(credentialSalt?: string): string {
+  const dedicated = dedicatedRoot();
+  const useDedicated =
+    credentialSalt === undefined
+      ? Boolean(dedicated)
+      : credentialSalt.startsWith(DEDICATED_SALT_PREFIX);
+  if (
+    credentialSalt !== undefined &&
+    /^v\d+:/.test(credentialSalt) &&
+    !useDedicated
+  )
+    throw new BridgePairingError(
+      503,
+      "Bridge түлхүүрийн хувилбар дэмжигдэхгүй байна",
+    );
+  if (useDedicated) {
+    if (dedicated.length < 32 || PLACEHOLDER_KEYS.has(dedicated.toLowerCase()))
+      throw new BridgePairingError(
+        503,
+        "PAX холболтын серверийн түлхүүр тохируулагдаагүй байна",
+      );
+    return dedicated;
+  }
   const key = process.env.JWT_SECRET || "dev-secret-change-me";
   const environment = process.env.APP_ENV || process.env.NODE_ENV;
   if (
     ["production", "staging"].includes(environment || "") &&
-    (key === "dev-secret-change-me" || key.length < 32)
+    (key.length < 32 || PLACEHOLDER_KEYS.has(key.toLowerCase()))
   )
     throw new BridgePairingError(
       503,
-      "API authentication түлхүүрийг тохируулна уу",
+      "PAX холболтын серверийн түлхүүр тохируулагдаагүй байна",
     );
   return key;
+}
+
+export function createBridgeCredentialSalt(): string {
+  // Validate before consuming a pairing code or changing its stored generation.
+  bridgeRootKey();
+  return `${dedicatedRoot() ? DEDICATED_SALT_PREFIX : ""}${crypto.randomBytes(32).toString("hex")}`;
 }
 
 export function hashPairingCode(raw: string): string {
@@ -64,7 +104,7 @@ export async function registerBridgeKey(
     secret: deriveBridgeSecret(
       registerId,
       binding.credentialSalt,
-      bridgeRootKey(),
+      bridgeRootKey(binding.credentialSalt),
     ),
     bindingId: binding.id,
   };
