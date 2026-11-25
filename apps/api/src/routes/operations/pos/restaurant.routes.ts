@@ -2491,7 +2491,8 @@ router.delete("/restaurant/pos/tables/:id", async (req, res) => {
 
     await prisma.$transaction(
       async (tx) => {
-        // Ticket creation locks this row too, so removal cannot race an order.
+        // Ticket and QR invoice creation lock this row too.
+        // ReadCommitted sees invoices committed while waiting for the lock.
         await tx.$queryRaw`
         SELECT "id" FROM "RestaurantTable"
         WHERE "id" = ${tableId} FOR UPDATE
@@ -2554,7 +2555,7 @@ router.delete("/restaurant/pos/tables/:id", async (req, res) => {
           data: { isActive: false, qrToken: null },
         });
       },
-      { isolationLevel: "Serializable" },
+      { isolationLevel: "ReadCommitted" },
     );
 
     return res.json({ ok: true });
