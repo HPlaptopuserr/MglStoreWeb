@@ -1367,6 +1367,17 @@ export async function createRestaurantDiningTable(input: {
   return readApiResponse<RestaurantDiningTable>(response);
 }
 
+export async function removeRestaurantDiningTable(input: {
+  branchId: string;
+  tableId: string;
+}) {
+  const response = await authFetch(
+    `${API}/restaurant/pos/tables/${encodeURIComponent(input.tableId)}`,
+    { method: "DELETE", body: JSON.stringify({ branchId: input.branchId }) },
+  );
+  return readApiResponse<{ ok: true }>(response);
+}
+
 export async function ensureRestaurantTableQrToken(input: {
   branchId: string;
   tableId: string;

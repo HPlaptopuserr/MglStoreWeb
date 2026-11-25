@@ -1465,17 +1465,31 @@ router.post("/restaurant/menu/:token/qpay/invoice", async (req, res) => {
       amount,
       lines: normalizedLines,
     };
-    const invoice = await prisma.qPayInvoice.create({
-      data: {
-        registerId: activeShift.registerId || null,
-        organizationId: table.organizationId,
-        initiatedById: activeShift.cashierId,
-        amount,
-        qrText: "",
-        status: PosQPayStatus.PENDING,
-        expiresAt,
-        webhookPayload: orderPayload as unknown as Prisma.JsonObject,
-      },
+    const invoice = await prisma.$transaction(async (tx) => {
+      // Coordinate QR invoice creation with table removal before contacting the provider.
+      await tx.$queryRaw`
+        SELECT "id" FROM "RestaurantTable"
+        WHERE "id" = ${table.id} FOR UPDATE
+      `;
+      const activeTable = await tx.restaurantTable.findFirst({
+        where: { id: table.id, qrToken, isActive: true },
+        select: { id: true },
+      });
+      if (!activeTable) {
+        throw Object.assign(new Error("QR menu олдсонгүй"), { status: 404 });
+      }
+      return tx.qPayInvoice.create({
+        data: {
+          registerId: activeShift.registerId || null,
+          organizationId: table.organizationId,
+          initiatedById: activeShift.cashierId,
+          amount,
+          qrText: "",
+          status: PosQPayStatus.PENDING,
+          expiresAt,
+          webhookPayload: orderPayload as unknown as Prisma.JsonObject,
+        },
+      });
     });
 
     try {
@@ -2456,6 +2470,109 @@ router.post("/restaurant/pos/tables", async (req, res) => {
   }
 });
 
+router.delete("/restaurant/pos/tables/:id", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const tableId = String(req.params.id || "").trim();
+    const branchId = String(req.body?.branchId || "").trim();
+    if (!tableId || !branchId) {
+      return res
+        .status(400)
+        .json({ message: "branchId болон tableId шаардлагатай" });
+    }
+    const access = await requireBranchAccess(actor, branchId);
+    if ("error" in access && access.error) {
+      return res
+        .status(access.error.status)
+        .json({ message: access.error.message });
+    }
+
+    await prisma.$transaction(
+      async (tx) => {
+        // Ticket creation locks this row too, so removal cannot race an order.
+        await tx.$queryRaw`
+        SELECT "id" FROM "RestaurantTable"
+        WHERE "id" = ${tableId} FOR UPDATE
+      `;
+        const table = await tx.restaurantTable.findFirst({
+          where: {
+            id: tableId,
+            branchId,
+            organizationId: access.branch.organizationId,
+            isActive: true,
+          },
+          select: { id: true },
+        });
+        if (!table) {
+          throw Object.assign(new Error("Ширээ олдсонгүй"), { status: 404 });
+        }
+        const occupiedTicket = await tx.restaurantTicket.findFirst({
+          where: { tableId, status: { in: OCCUPIED_TICKET_STATUSES } },
+          select: { id: true },
+        });
+        if (occupiedTicket) {
+          throw Object.assign(
+            new Error(
+              "Захиалгатай ширээг хасах боломжгүй. Эхлээд захиалгыг дуусгаж, ширээг чөлөөлнө үү.",
+            ),
+            { status: 409 },
+          );
+        }
+        const pendingQrPayment = await tx.qPayInvoice.findFirst({
+          where: {
+            organizationId: access.branch.organizationId,
+            consumedAt: null,
+            AND: [
+              {
+                webhookPayload: {
+                  path: ["source"],
+                  equals: RESTAURANT_QR_QPAY_SOURCE,
+                },
+              },
+              { webhookPayload: { path: ["tableId"], equals: tableId } },
+            ],
+            OR: [
+              { status: PosQPayStatus.PENDING, expiresAt: { gt: new Date() } },
+              { status: PosQPayStatus.PAID },
+            ],
+          },
+          select: { id: true },
+        });
+        if (pendingQrPayment) {
+          throw Object.assign(
+            new Error(
+              "Ширээний QR төлбөр хүлээгдэж байна. Төлбөрийг шийдвэрлэсний дараа хасна уу.",
+            ),
+            { status: 409 },
+          );
+        }
+        // Preserve receipts and ticket history; invalidate the printed QR link.
+        await tx.restaurantTable.update({
+          where: { id: table.id },
+          data: { isActive: false, qrToken: null },
+        });
+      },
+      { isolationLevel: "Serializable" },
+    );
+
+    return res.json({ ok: true });
+  } catch (error) {
+    const known = error as Error & { status?: number; code?: string };
+    if (known.status) {
+      return res.status(known.status).json({ message: known.message });
+    }
+    if (known.code === "P2034") {
+      return res.status(409).json({
+        message: "Ширээний мэдээлэл өөрчлөгдсөн байна. Дахин оролдоно уу.",
+      });
+    }
+    console.error("remove restaurant table error", error);
+    return res.status(500).json({ message: "Ширээ хасахад алдаа гарлаа" });
+  }
+});
+
 router.post("/restaurant/pos/tables/bootstrap", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
@@ -2472,16 +2589,26 @@ router.post("/restaurant/pos/tables/bootstrap", async (req, res) => {
         .json({ message: access.error.message });
     }
 
-    await prisma.restaurantTable.createMany({
-      data: DEFAULT_TABLES.map((table) => ({
-        id: crypto.randomUUID(),
-        organizationId: access.branch.organizationId,
-        branchId,
-        qrToken: generateTableQrToken(),
-        ...table,
-      })),
-      skipDuplicates: true,
-    });
+    await prisma.$transaction(
+      async (tx) => {
+        // An intentionally empty floor plan must not recreate removed tables.
+        const existingCount = await tx.restaurantTable.count({
+          where: { branchId },
+        });
+        if (existingCount > 0) return;
+        await tx.restaurantTable.createMany({
+          data: DEFAULT_TABLES.map((table) => ({
+            id: crypto.randomUUID(),
+            organizationId: access.branch.organizationId,
+            branchId,
+            qrToken: generateTableQrToken(),
+            ...table,
+          })),
+          skipDuplicates: true,
+        });
+      },
+      { isolationLevel: "Serializable" },
+    );
 
     return res.status(201).json({ ok: true });
   } catch (error) {

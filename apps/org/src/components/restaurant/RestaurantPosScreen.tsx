@@ -11,6 +11,7 @@ import { verifiedCreditBorrower } from "@/lib/registered-credit-borrower-state";
 import { RegisteredCreditUserLookup } from "./RegisteredCreditUserLookup";
 import { RestaurantBorrowerDialog } from "./RestaurantBorrowerDialog";
 import { RestaurantEmployeeDiscount } from "./RestaurantEmployeeDiscount";
+import { RestaurantDialog } from "./RestaurantDialog";
 import { RestaurantPaymentDialog } from "./RestaurantPaymentDialog";
 import { RestaurantCartItem } from "./RestaurantCartItem";
 import { RestaurantKitchenProgress } from "./RestaurantKitchenProgress";
@@ -43,6 +44,7 @@ import {
   LayoutGrid,
   Loader2,
   Plus,
+  Pencil,
   Printer,
   QrCode,
   ReceiptText,
@@ -70,6 +72,7 @@ import {
   createRestaurantCreditSale,
   createRestaurantMenuProduct,
   createRestaurantDiningTable,
+  removeRestaurantDiningTable,
   createRestaurantQPayInvoice,
   createRestaurantQPaySale,
   enableRestaurantMenuProduct,
@@ -771,9 +774,17 @@ function RestaurantPosContent() {
     useState<SalesHistoryRangeId>("7");
   const [selectedSaleHistoryId, setSelectedSaleHistoryId] = useState("");
   const [voidingSaleId, setVoidingSaleId] = useState("");
-  const [tableCreateOpen, setTableCreateOpen] = useState(false);
+  const [tableToRemove, setTableToRemove] = useState<{
+    id: string;
+    label: string;
+    branchId: string;
+  } | null>(null);
+  const [tableRemoving, setTableRemoving] = useState(false);
+  const [tableRemoveError, setTableRemoveError] = useState("");
+  const [tableManagerOpen, setTableManagerOpen] = useState(false);
   const [tableCreating, setTableCreating] = useState(false);
   const [tableCreateError, setTableCreateError] = useState("");
+  const [tableManagerNotice, setTableManagerNotice] = useState("");
   const [newTableLabel, setNewTableLabel] = useState("");
   const [newTableZone, setNewTableZone] = useState("Гол заал");
   const [newTableSeats, setNewTableSeats] = useState("4");
@@ -2496,12 +2507,13 @@ function RestaurantPosContent() {
     }
   };
 
-  const openCreateTableModal = () => {
+  const openTableManager = () => {
+    setTableManagerNotice("");
     setNewTableLabel("");
     setNewTableZone(selectedTable.zone || "Гол заал");
     setNewTableSeats("4");
     setTableCreateError("");
-    setTableCreateOpen(true);
+    setTableManagerOpen(true);
   };
 
   const handleCreateTable = async (event: FormEvent<HTMLFormElement>) => {
@@ -2513,13 +2525,13 @@ function RestaurantPosContent() {
 
     const label = newTableLabel.trim();
     const zone = newTableZone.trim() || "Гол заал";
-    const seats = Math.floor(Number(newTableSeats || 4));
+    const seats = Number(newTableSeats);
     if (!label) {
       setTableCreateError("Ширээний нэр оруулна уу.");
       return;
     }
-    if (!Number.isFinite(seats) || seats < 1) {
-      setTableCreateError("Суудлын тоо 1-ээс их байх ёстой.");
+    if (!Number.isInteger(seats) || seats < 1 || seats > 99) {
+      setTableCreateError("Суудлын тоо 1–99 хоорондох бүхэл тоо байна.");
       return;
     }
 
@@ -2542,7 +2554,9 @@ function RestaurantPosContent() {
           [mapped.id]: qrToken,
         }));
       }
-      setTableCreateOpen(false);
+      setNewTableLabel("");
+      setNewTableSeats("4");
+      setTableManagerNotice(`Ширээ ${mapped.label} нэмэгдлээ.`);
       setNotice(`Ширээ ${mapped.label} нэмэгдлээ.`);
       void loadTables({ silent: true });
     } catch (error) {
@@ -2551,6 +2565,42 @@ function RestaurantPosContent() {
       );
     } finally {
       setTableCreating(false);
+    }
+  };
+
+  const handleRemoveTable = async () => {
+    if (!tableToRemove || tableRemoving) return;
+    setTableRemoving(true);
+    setTableRemoveError("");
+    try {
+      await removeRestaurantDiningTable({
+        branchId: tableToRemove.branchId,
+        tableId: tableToRemove.id,
+      });
+      setDiningTables((current) =>
+        current.filter((table) => table.id !== tableToRemove.id),
+      );
+      setSelectedTableId((current) =>
+        current === tableToRemove.id ? "" : current,
+      );
+      setQrSelectedTableId((current) =>
+        current === tableToRemove.id ? "" : current,
+      );
+      setQrTokensByTableId((current) => {
+        const next = { ...current };
+        delete next[tableToRemove.id];
+        return next;
+      });
+      setTableManagerNotice(`Ширээ ${tableToRemove.label} хасагдлаа.`);
+      setNotice(`Ширээ ${tableToRemove.label} хасагдлаа.`);
+      setTableToRemove(null);
+      void loadTables({ silent: true });
+    } catch (error) {
+      setTableRemoveError(
+        error instanceof Error ? error.message : "Ширээ хасахад алдаа гарлаа",
+      );
+    } finally {
+      setTableRemoving(false);
     }
   };
 
@@ -4071,7 +4121,7 @@ function RestaurantPosContent() {
 
 
           <section className="mt-2 shrink-0 rounded-lg border border-[#273647] bg-[#122131] px-2 py-2 shadow-sm">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-300/10 text-sky-600">
                   <LayoutGrid className="h-4 w-4" />
@@ -4079,22 +4129,22 @@ function RestaurantPosContent() {
                 <div>
                   <p className="text-xs font-black text-slate-100">Ширээ</p>
                   <p className="text-[10px] font-semibold text-slate-400">
-                    Compact map
+                    {selectedTable.id ? `Сонгосон: ${selectedTable.label}` : "Шинэ ширээ нэмнэ үү"}
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <span className="text-[11px] font-bold text-slate-500">
                   {activeTables} идэвхтэй · {diningTables.length} ширээ
                 </span>
                 <button
                   type="button"
-                  onClick={openCreateTableModal}
-                  disabled={!selectedRegister}
-                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-sky-300/40 bg-sky-300/10 px-2.5 text-[11px] font-black text-sky-200 transition hover:bg-sky-300/15 disabled:cursor-not-allowed disabled:border-[#273647] disabled:bg-[#0d1c2d] disabled:text-slate-400"
+                  onClick={openTableManager}
+                  disabled={!selectedRegister || ticketSaving || kitchenSubmitting || checkoutSubmitting || clearSubmitting || qpayPaymentActive}
+                  className="inline-flex h-11 items-center gap-1.5 rounded-lg border border-sky-300/40 bg-sky-300/10 px-3 text-xs font-black text-sky-200 transition hover:bg-sky-300/15 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <Plus className="h-3 w-3" />
-                  Нэмэх
+                  <Pencil aria-hidden="true" className="h-4 w-4" />
+                  Засах
                 </button>
               </div>
             </div>
@@ -4112,6 +4162,10 @@ function RestaurantPosContent() {
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Ширээ ачаалж байна...
                 </div>
+              ) : diningTables.length === 0 ? (
+                <p className="py-3 text-xs font-semibold text-slate-400">
+                  Ширээ байхгүй байна. «Засах» товчоор орж шинэ ширээ нэмнэ үү.
+                </p>
               ) : (
                 diningTables.map((table) => {
                   const isSelected = table.id === selectedTable.id;
@@ -5860,109 +5914,221 @@ function RestaurantPosContent() {
         </div>
       ) : null}
 
-      {tableCreateOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
-          <form
-            onSubmit={handleCreateTable}
-            className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#242735] shadow-2xl"
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-white/10 p-5">
-              <div>
-                <p className="text-xs font-black uppercase tracking-wider text-sky-300">
-                  Restaurant table
-                </p>
-                <h3 className="mt-1 text-2xl font-black text-white">
-                  Ширээ нэмэх
-                </h3>
-                <p className="mt-2 text-sm font-semibold text-slate-400">
-                  Шинэ ширээ зураглал дээр нэмэгдэж, QR token автоматаар үүснэ.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTableCreateOpen(false)}
-                disabled={tableCreating}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:text-white disabled:opacity-40"
-                aria-label="Хаах"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="space-y-4 p-5">
-              <label className="block">
-                <span className="text-sm font-bold text-slate-300">
-                  Ширээний нэр
-                </span>
-                <input
-                  value={newTableLabel}
-                  onChange={(event) => setNewTableLabel(event.target.value)}
-                  placeholder="Жишээ: A5, VIP 2"
-                  autoFocus
-                  disabled={tableCreating}
-                  className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-sm font-semibold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-400/70 disabled:opacity-60"
-                />
-              </label>
-
-              <div className="grid grid-cols-[minmax(0,1fr)_110px] gap-3">
-                <label className="block">
-                  <span className="text-sm font-bold text-slate-300">
-                    Бүс / заал
-                  </span>
-                  <input
-                    value={newTableZone}
-                    onChange={(event) => setNewTableZone(event.target.value)}
-                    placeholder="Гол заал"
-                    disabled={tableCreating}
-                    className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-sm font-semibold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-400/70 disabled:opacity-60"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="text-sm font-bold text-slate-300">
-                    Суудал
-                  </span>
-                  <input
-                    value={newTableSeats}
-                    onChange={(event) => setNewTableSeats(event.target.value)}
-                    inputMode="numeric"
-                    disabled={tableCreating}
-                    className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-sm font-semibold text-slate-100 outline-none focus:border-sky-400/70 disabled:opacity-60"
-                  />
-                </label>
-              </div>
-
-              {tableCreateError ? (
-                <p className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold leading-5 text-rose-200">
-                  {tableCreateError}
+      {tableManagerOpen ? (
+        <RestaurantDialog
+          title={
+            tableToRemove
+              ? `Ширээ ${tableToRemove.label} хасах уу?`
+              : "Ширээ засах"
+          }
+          busy={tableCreating || tableRemoving}
+          onClose={() =>
+            tableToRemove ? setTableToRemove(null) : setTableManagerOpen(false)
+          }
+        >
+          {tableToRemove ? (
+            <>
+              <p className="text-sm leading-6 text-slate-300">
+                Энэ ширээ зураглалаас хасагдаж, QR меню холбоос нь ажиллахгүй
+                болно. Өмнөх захиалга, борлуулалтын түүх хадгалагдана.
+              </p>
+              {tableRemoveError ? (
+                <p
+                  role="alert"
+                  className="mt-4 rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-sm text-rose-200"
+                >
+                  {tableRemoveError}
                 </p>
               ) : null}
-
-              <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="mt-5 grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={() => setTableCreateOpen(false)}
-                  disabled={tableCreating}
-                  className="flex h-12 items-center justify-center rounded-lg border border-white/10 text-sm font-black text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={tableRemoving}
+                  onClick={() => setTableToRemove(null)}
+                  className="h-11 rounded-lg border border-white/10 text-sm font-bold text-slate-200 disabled:opacity-50"
                 >
                   Болих
                 </button>
                 <button
-                  type="submit"
-                  disabled={tableCreating}
-                  className="flex h-12 items-center justify-center gap-2 rounded-lg bg-sky-400 text-sm font-black text-white transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                  type="button"
+                  disabled={tableRemoving}
+                  onClick={() => void handleRemoveTable()}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-rose-500 text-sm font-bold text-white hover:bg-rose-400 disabled:opacity-50"
                 >
-                  {tableCreating ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                  {tableRemoving ? (
+                    <Loader2
+                      aria-hidden="true"
+                      className="h-4 w-4 animate-spin"
+                    />
                   ) : (
-                    <Plus className="h-4 w-4" />
+                    <Trash2 aria-hidden="true" className="h-4 w-4" />
                   )}
-                  Нэмэх
+                  {tableRemoving ? "Хасаж байна…" : "Ширээ хасах"}
                 </button>
               </div>
-            </div>
-          </form>
-        </div>
+            </>
+          ) : (
+            <>
+              <p className="mb-4 text-sm leading-6 text-slate-300">
+                Эндээс ширээ нэмэх, хасах боломжтой. Захиалгатай ширээг эхлээд
+                чөлөөлнө үү.
+              </p>
+              {tableManagerNotice ? (
+                <p
+                  role="status"
+                  className="mb-4 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-3 py-2 text-sm font-semibold text-emerald-200"
+                >
+                  {tableManagerNotice}
+                </p>
+              ) : null}
+              <ul
+                aria-label="Ширээний жагсаалт"
+                className="max-h-60 space-y-2 overflow-y-auto pr-1"
+              >
+                {diningTables.map((table) => {
+                  const occupied =
+                    table.status !== "FREE" ||
+                    Boolean(table.currentTicket) ||
+                    (table.id === selectedTable.id && ticketLines.length > 0);
+                  return (
+                    <li
+                      key={table.id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-[#0d1c2d] px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="break-words text-sm font-bold text-white">
+                          {table.label}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400">
+                          {table.zone} · {table.seats} суудал ·{" "}
+                          {occupied ? "Захиалгатай" : "Сул"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label={`Ширээ ${table.label} хасах`}
+                        disabled={occupied || tablesLoading || tableCreating}
+                        title={
+                          occupied
+                            ? "Эхлээд захиалгыг дуусгаж, ширээг чөлөөлнө үү"
+                            : "Ширээ хасах"
+                        }
+                        onClick={() => {
+                          if (!selectedRegister) return;
+                          setTableRemoveError("");
+                          setTableToRemove({
+                            id: table.id,
+                            label: table.label,
+                            branchId: selectedRegister.branchId,
+                          });
+                        }}
+                        className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 text-xs font-bold text-rose-200 hover:bg-rose-300/20 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Trash2 aria-hidden="true" className="h-4 w-4" />
+                        Хасах
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {diningTables.length === 0 ? (
+                <p className="text-sm text-slate-400">
+                  Ширээ байхгүй. Доорх хэсгээс шинэ ширээ нэмнэ үү.
+                </p>
+              ) : null}
+              <form
+                onSubmit={handleCreateTable}
+                className="mt-5 border-t border-white/10 pt-5"
+              >
+                <h3 className="mb-4 text-base font-bold text-white">
+                  Ширээ нэмэх
+                </h3>
+                <div className="space-y-4">
+                  <label className="block">
+                    <span className="text-sm font-bold text-slate-300">
+                      Ширээний нэр
+                    </span>
+                    <input
+                      value={newTableLabel}
+                      onChange={(event) => setNewTableLabel(event.target.value)}
+                      placeholder="Жишээ: A5, VIP 2"
+                      required
+                      maxLength={40}
+                      disabled={tableCreating}
+                      className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-sm font-semibold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-400/70 disabled:opacity-60"
+                    />
+                  </label>
+
+                  <div className="grid grid-cols-[minmax(0,1fr)_110px] gap-3">
+                    <label className="block">
+                      <span className="text-sm font-bold text-slate-300">
+                        Бүс / заал
+                      </span>
+                      <input
+                        value={newTableZone}
+                        onChange={(event) => setNewTableZone(event.target.value)}
+                        placeholder="Гол заал"
+                        maxLength={60}
+                        disabled={tableCreating}
+                        className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-sm font-semibold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-400/70 disabled:opacity-60"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="text-sm font-bold text-slate-300">
+                        Суудал
+                      </span>
+                      <input
+                        value={newTableSeats}
+                        onChange={(event) => setNewTableSeats(event.target.value)}
+                        type="number"
+                        min={1}
+                        max={99}
+                        step={1}
+                        required
+                        inputMode="numeric"
+                        disabled={tableCreating}
+                        className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-sm font-semibold text-slate-100 outline-none focus:border-sky-400/70 disabled:opacity-60"
+                      />
+                    </label>
+                  </div>
+
+                  {tableCreateError ? (
+                    <p
+                      role="alert"
+                      className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold leading-5 text-rose-200"
+                    >
+                      {tableCreateError}
+                    </p>
+                  ) : null}
+
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setTableManagerOpen(false)}
+                      disabled={tableCreating}
+                      className="flex h-12 items-center justify-center rounded-lg border border-white/10 text-sm font-black text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Хаах
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={tableCreating}
+                      className="flex h-12 items-center justify-center gap-2 rounded-lg bg-sky-400 text-sm font-black text-white transition hover:bg-sky-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                    >
+                      {tableCreating ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Plus className="h-4 w-4" />
+                      )}
+                      Нэмэх
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </>
+          )}
+        </RestaurantDialog>
       ) : null}
 
       {qrModalOpen ? (
