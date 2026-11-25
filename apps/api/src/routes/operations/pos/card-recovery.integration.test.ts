@@ -1324,7 +1324,7 @@ test(
         paid = true;
       });
 
-      for (const message of ["Not permitted", "Transaction refused", "Пин буруу", "System Error", "SystemError"]) {
+      for (const message of ["Not permitted", "Transaction refused", "Пин буруу", "System Error", "SystemError", "Limit reached for total number of transactions in cycle"]) {
         await t.test(`${message} releases the pending payment without clearing its basket or issuing another invoice`, async () => {
           const f = await fixture();
           paid = false;
@@ -1340,13 +1340,19 @@ test(
             const result = await response.json() as { status: string; message: string };
             assert.equal(response.status, 200);
             assert.equal(result.status, "DECLINED");
-            assert.equal(result.message, message);
+            if (message === "Limit reached for total number of transactions in cycle") {
+              assert.match(result.message, /лимит/);
+              assert.match(result.message, /Minu\/банк/);
+              assert.match(result.message, /QR|бэлнээр/);
+            } else assert.equal(result.message, message);
             assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
             assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 1);
             const stored = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
             assert.equal(stored.consumedAt, null);
             assert.equal(stored.saleReference, null);
             assert.equal(stored.transactionId, null);
+            const checkTxn = (stored.providerPayload as { checkTxn?: { entity?: { message?: unknown } } }).checkTxn;
+            assert.equal(checkTxn?.entity?.message, message, "keep the original provider refusal alongside the localized cashier message");
             assert.equal((stored.providerPayload as Record<string, unknown>).terminalGuardVersion, 1,
               "the status, rather than deleting audit evidence, removes the terminal guard");
             assert.deepEqual((stored.providerPayload as Record<string, unknown>).checkout, (original.providerPayload as Record<string, unknown>).checkout);
@@ -1496,7 +1502,8 @@ test(
           assert.equal(await prisma.posCardStockReservation.count({ where: { productId: g.product.id } }), 1);
           const cancelUnknown = await fetch(`${base}/pos/payments/qpay/cancel`, { method: "POST", headers,
             body: JSON.stringify({ invoiceId: unknownId, requireProviderCancellation: true }) });
-          assert.equal(cancelUnknown.status, 400);
+          assert.equal(cancelUnknown.status, 409);
+          assert.equal((await cancelUnknown.json() as { code: string }).code, "QR_CREATION_INCOMPLETE");
           assert.equal(await prisma.posCardStockReservation.count({ where: { productId: g.product.id } }), 1);
           qrCreationFails = false; qrProviderPaid = false;
           const h = await fixture();

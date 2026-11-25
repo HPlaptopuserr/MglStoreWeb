@@ -14,7 +14,7 @@ function deferred(attempt: CardPaymentAttempt): DeferredCardCheckout | null {
   if (!saved || (saved.kind !== "RETAIL" && saved.kind !== "SELF_SERVICE") ||
       typeof saved.snapshot !== "string" || typeof saved.clientSaleId !== "string") return null;
   return { attemptId: attempt.id, amount: Number(attempt.amount), terminalId: attempt.terminalId,
-    status: attempt.status, transactionId: attempt.transactionId, createdAt: attempt.createdAt.toISOString(),
+    status: attempt.status, message: attempt.message, transactionId: attempt.transactionId, createdAt: attempt.createdAt.toISOString(),
     kind: saved.kind, clientSaleId: saved.clientSaleId, snapshot: saved.snapshot };
 }
 

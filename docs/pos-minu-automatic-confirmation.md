@@ -22,6 +22,14 @@ and conflicting bank references continue to require checking the original
 invoice. This is an application classification of those exact responses, not a
 blanket rule that every status `10` or system/network error proves no debit.
 
+The exact terminal reply `Limit reached for total number of transactions in cycle`
+also settles as `DECLINED` when API status is `000`, terminal status is `10`,
+error is `true`, the original invoice matches and no RRN is present. The provider
+reply remains in the payment history. The cashier sees a Mongolian explanation
+in the saved checkout and can restore the failed cart or accept another order.
+Minu/the bank must explain and resolve the reported transaction-cycle limit;
+clearing this application's pending-payment guard does not reset that limit.
+
 Deploy the API before Vendor. Old Vendor clients remain compatible with the updated API. No schema migration or payment credential changes are required.
 
 Validation covers RRN-less approval, delayed approval, provider outages, invoice mismatch, restoration, repeated authorization identity, stale status responses, server reconciliation, stock rollback, idempotent sale retry, concurrent payment consumption, and mixed card/QR/cash sales. Integration tests use a disposable local PostgreSQL database and a synthetic local Minu provider; they never charge a real terminal.

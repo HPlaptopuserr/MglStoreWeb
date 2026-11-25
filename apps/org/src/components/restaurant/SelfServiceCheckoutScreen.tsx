@@ -1707,7 +1707,7 @@ function SelfServiceCheckoutContent() {
       if (attempt.attemptId !== record.attemptId) throw new Error("Төлбөрийн хүсэлтийн дугаар тохирохгүй байна.");
       setDeferredCards(previous => previous.map(item => item.attemptId === record.attemptId &&
         !["APPROVED", "DECLINED"].includes(item.status)
-        ? { ...item, status: attempt.status, transactionId: attempt.transactionId || null }
+        ? { ...item, status: attempt.status, transactionId: attempt.transactionId || null, message: attempt.message || null }
         : item));
       setDeferredVersion(value => value + 1);
     } catch {
@@ -2353,12 +2353,12 @@ function SelfServiceCheckoutContent() {
         {deferredCards.length > 0 && <section aria-label="Хүлээгдэж буй захиалга" className="relative z-10 mx-6 rounded-xl border border-amber-200 bg-amber-50 p-3 text-center text-sm text-amber-950">
           <p>Өмнөх {deferredCards.length} захиалга тусад нь хадгалагдсан. Шинэ захиалгыг QR-аар төлж болно.</p>
           <div className="mt-2 flex max-h-64 flex-wrap justify-center gap-2 overflow-y-auto">{deferredCards.map(record => {
-            const confirmation = getSelfServiceCardConfirmation(record.status);
+            const confirmation = getSelfServiceCardConfirmation(record.status, record.message);
             const checking = checkingDeferredId === record.attemptId;
             return <div key={record.attemptId} className="max-w-sm rounded-lg border border-amber-300 bg-white px-3 py-2">
               <p>{formatMoney(record.amount)} · {new Date(record.createdAt).toLocaleString("mn-MN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ulaanbaatar" })}</p>
               <p className="mt-1 font-bold">{confirmation.title}</p>
-              {confirmation.unresolved && <p className="mt-1 text-xs">{confirmation.message}</p>}
+              {confirmation.message && <p className="mt-1 text-xs">{confirmation.message}</p>}
               <button type="button"
                 disabled={confirmation.unresolved ? checkingDeferredId !== null : submitting || cart.length > 0 || Boolean(pendingCardCheckout)}
                 onClick={() => void (confirmation.unresolved ? recheckDeferredOrder(record) : restoreDeferredOrder(record))}

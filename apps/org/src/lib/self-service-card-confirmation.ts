@@ -1,5 +1,8 @@
 /** Display confirmation separately from bank authorization; unknown never means declined. */
-export function getSelfServiceCardConfirmation(status: string | undefined) {
+export function getSelfServiceCardConfirmation(
+  status: string | undefined,
+  declineReason?: string | null,
+) {
   if (status === "APPROVED") {
     return {
       title: "Төлбөр баталгаажсан",
@@ -11,7 +14,7 @@ export function getSelfServiceCardConfirmation(status: string | undefined) {
   if (status === "DECLINED") {
     return {
       title: "Төлбөр амжилтгүй",
-      message: "",
+      message: declineReason?.trim() || "",
       action: "Амжилтгүй · Дахин төлөх",
       unresolved: false,
     };

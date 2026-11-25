@@ -284,3 +284,41 @@ test("missing Minu terminal result reports confirmation failure and keeps the or
   assert.equal(approved.approved, true);
   assert.doesNotMatch(approved.message ?? "", /баталгаажуулалт амжилтгүй/);
 });
+
+test("the exact cycle transaction limit refusal resolves only a matching strict terminal failure", () => {
+  const message = "Limit reached for total number of transactions in cycle";
+  const response = { status: "000", message: "Successful", entity: {
+    invoice: "MGL-782438A30990412EBC9D716A", status: "10", error: "true", message, rrn: null,
+  } };
+  const result = parseMinuAgentTransactionResponse(response);
+  assert.equal(isMinuTerminalRefusal(response), true);
+  assert.equal(result.declined, true);
+  assert.equal(result.approved, false);
+  assert.equal(result.pending, false);
+  assert.match(result.message ?? "", /лимит/);
+  assert.match(result.message ?? "", /Minu\/банк/);
+  assert.match(result.message ?? "", /QR|бэлнээр/);
+  assert.equal(result.raw, response, "original provider refusal must remain auditable");
+  for (const changed of [
+    { ...response, status: "0064" },
+    { ...response, entity: { ...response.entity, status: null } },
+    { ...response, entity: { ...response.entity, status: "0" } },
+    { ...response, entity: { ...response.entity, error: "false" } },
+    { ...response, entity: { ...response.entity, error: null } },
+    { ...response, entity: { ...response.entity, invoice: "" } },
+    { ...response, entity: { ...response.entity, rrn: "bank-proof" } },
+    { ...response, entity: { ...response.entity, message: `${message}; checking` } },
+    { ...response, entity: { ...response.entity, message: "Limit reached" } },
+    { ...response, entity: { ...response.entity, message: null } },
+  ]) {
+    assert.equal(isMinuTerminalRefusal(changed), false);
+    assert.equal(parseMinuAgentTransactionResponse(changed).declined, false);
+    assert.equal(parseMinuAgentTransactionResponse(changed).pending, true);
+  }
+  const unknown = parseMinuAgentTransactionResponse({ status: "000", entity: {
+    invoice: response.entity.invoice, status: null, error: "true", rrn: null, message: null,
+  } });
+  assert.equal(unknown.pending, true);
+  assert.equal(unknown.declined, false);
+  assert.equal(unknown.approved, false);
+});

@@ -53,3 +53,21 @@ test("recheck reads the original attempt with cancellation and never posts a cha
   assert.equal(requests.length, 1);
   assert.equal(getSelfServiceCardConfirmation(attempt.status).unresolved, true);
 });
+
+test("verified decline exposes the durable bank refusal reason", () => {
+  const reason = "Картын терминалын мөчлөгийн гүйлгээний тооны хязгаарт хүрсэн. Банктай холбогдоно уу.";
+  const result = getSelfServiceCardConfirmation("DECLINED", reason);
+  assert.equal(result.message, reason);
+  assert.equal(result.unresolved, false);
+  assert.equal(result.action, "Амжилтгүй · Дахин төлөх");
+  assert.equal(getSelfServiceCardConfirmation("DECLINED", null).message, "");
+});
+
+test("provider messages cannot replace unknown-payment protection or approved display", () => {
+  for (const status of ["PENDING", "FAILED"]) {
+    const result = getSelfServiceCardConfirmation(status, "Successful");
+    assert.match(result.message, /Мөнгө суутгагдсан эсэх тодорхойгүй/);
+    assert.equal(result.unresolved, true);
+  }
+  assert.equal(getSelfServiceCardConfirmation("APPROVED", "old refusal").message, "");
+});

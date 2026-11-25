@@ -15,6 +15,7 @@ export interface VerifiedCardRecovery extends RecoverableCardPayment {
 
 /** A saved checkout awaiting its original card result; never a new charge. */
 export interface DeferredCardCheckout extends RecoverableCardPayment {
+  message?: string | null;
   kind: "RETAIL" | "SELF_SERVICE";
   clientSaleId: string;
   snapshot: string;

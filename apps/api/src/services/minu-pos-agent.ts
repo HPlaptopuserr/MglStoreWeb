@@ -222,12 +222,15 @@ export function isMinuInsufficientFunds(data: MinuAgentResponse<MinuTxnEntity>):
     !String(data.entity?.rrn ?? "").trim();
 }
 
+const TERMINAL_CYCLE_LIMIT_MESSAGE = "limit reached for total number of transactions in cycle";
+
 const TERMINAL_FAILURE_MESSAGES = new Set([
   "not permitted",
   "transaction refused",
   "пин буруу",
   "system error",
   "systemerror",
+  TERMINAL_CYCLE_LIMIT_MESSAGE,
 ]);
 
 /** Explicit terminal errors settle the attempt and permit a deliberate retry.
@@ -313,6 +316,8 @@ export function parseMinuAgentTransactionResponse(
   const status = entityStatus || topStatus;
   const confirmationFailed = pending && normalizedTopStatus === "000" &&
     !entityStatus && !rrn && normalizedEntityError === "TRUE";
+  const cycleLimitDeclined = declined &&
+    String(data.entity?.message ?? "").trim().toLowerCase() === TERMINAL_CYCLE_LIMIT_MESSAGE;
 
   return {
     approved,
@@ -321,7 +326,9 @@ export function parseMinuAgentTransactionResponse(
     apiStatus: topStatus,
     terminalStatus: entityStatus,
     status,
-    message: confirmationFailed
+    message: cycleLimitDeclined
+      ? "Банк/терминал тухайн цикл дэх гүйлгээний тооны лимит хүрсэн гэж татгалзлаа. Лимитийг Minu/банкаар шалгуулна уу. QR эсвэл бэлнээр төлж болно."
+      : confirmationFailed
       ? "Төлбөрийн баталгаажуулалт амжилтгүй. Minu гүйлгээний эцсийн төлөв буцаасангүй."
       : data.entity?.message || data.message,
     transactionId: rrn || data.entity?.invoice,

@@ -60,3 +60,23 @@ test("approval without the original invoice cannot settle an unknown attempt", (
   const result = parseMinuAgentTransactionResponse({ status: "000", entity: { status: "000", rrn: "bank-reference" } });
   assert.throws(() => minuCardStatusUpdate(attempt(), result), /нэхэмжлэх/);
 });
+
+test("a verified cycle-limit refusal declines the original guarded attempt without inventing payment proof", () => {
+  const message = "Limit reached for total number of transactions in cycle";
+  const raw = { status: "000", entity: { invoice: "MGL-original", status: "10", error: "true", rrn: null, message } };
+  const checkout = { clientSaleId: "original-sale", branchId: "branch", shiftId: "shift", lines: [{ productId: "product", qty: 1, unitPrice: 25000 }] };
+  const original = attempt({ amount: new Prisma.Decimal(25000), providerPayload: { provider: "MINU_AGENT", invoice: "MGL-original", terminalGuardVersion: 1, checkout } });
+  const data = minuCardStatusUpdate(original, parseMinuAgentTransactionResponse(raw));
+  assert.equal(data?.status, "DECLINED");
+  assert.equal(data?.transactionId, undefined);
+  assert.equal(data?.traceno, undefined);
+  assert.match(String(data?.message), /лимит/);
+  const payload = data?.providerPayload as { checkout: unknown; terminalGuardVersion: number; checkTxn: unknown };
+  assert.deepEqual(payload.checkout, checkout);
+  assert.equal(payload.terminalGuardVersion, 1);
+  assert.deepEqual(payload.checkTxn, raw);
+  assert.throws(() => minuCardStatusUpdate(original, parseMinuAgentTransactionResponse({ ...raw, entity: { ...raw.entity, invoice: "another-invoice" } })), /нэхэмжлэх/);
+  const pending = minuCardStatusUpdate(original, parseMinuAgentTransactionResponse({ status: "000", entity: { invoice: "MGL-original", status: null, error: "true", rrn: null, message: null } }));
+  assert.equal(pending?.status, "PENDING");
+  assert.equal(pending?.transactionId, undefined);
+});
