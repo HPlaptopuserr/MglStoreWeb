@@ -61,7 +61,7 @@ export type MinuTxnEntity = {
   invoice?: string;
   terminalId?: string;
   type?: string;
-  message?: string;
+  message?: string | null;
   error?: string | number | boolean | null;
   cardNo?: string;
   status?: string | number | null;
@@ -311,6 +311,8 @@ export function parseMinuAgentTransactionResponse(
   // returns an explicit paid state or a bank RRN.
   const pending = !approved && !declined;
   const status = entityStatus || topStatus;
+  const confirmationFailed = pending && normalizedTopStatus === "000" &&
+    !entityStatus && !rrn && normalizedEntityError === "TRUE";
 
   return {
     approved,
@@ -319,7 +321,9 @@ export function parseMinuAgentTransactionResponse(
     apiStatus: topStatus,
     terminalStatus: entityStatus,
     status,
-    message: data.entity?.message || data.message,
+    message: confirmationFailed
+      ? "Төлбөрийн баталгаажуулалт амжилтгүй. Minu гүйлгээний эцсийн төлөв буцаасангүй."
+      : data.entity?.message || data.message,
     transactionId: rrn || data.entity?.invoice,
     entity: data.entity,
     raw: data,

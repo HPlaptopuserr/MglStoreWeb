@@ -2,6 +2,7 @@
 
 import type { DeferredCardCheckout } from "@mgl/types";
 import { getDeferredRestaurantCards, deferRestaurantCard, acknowledgeDeferredRestaurantCard, RestaurantPosApiError } from "@/lib/restaurant-pos-api";
+import { getSelfServiceCardConfirmation } from "@/lib/self-service-card-confirmation";
 import { parseSelfServicePendingPayment } from "@/lib/self-service-payment-recovery";
 import Link from "next/link";
 import { SelfServiceCheckoutLayout } from "./SelfServiceCheckoutLayout";
@@ -735,6 +736,17 @@ function SelfServiceCheckoutContent() {
   );
   const [deferredCards, setDeferredCards] = useState<DeferredCardCheckout[]>([]);
   const [deferredVersion, setDeferredVersion] = useState(0);
+  const [checkingDeferredId, setCheckingDeferredId] = useState<string | null>(null);
+  const [deferredCheckError, setDeferredCheckError] = useState("");
+  const deferredCheckController = useRef<AbortController | null>(null);
+  useEffect(() => {
+    setCheckingDeferredId(null);
+    setDeferredCheckError("");
+    return () => {
+      deferredCheckController.current?.abort();
+      deferredCheckController.current = null;
+    };
+  }, [register?.id]);
   const deferredRegisterRef = useRef(register?.id);
   const deferringCardRef = useRef(false);
   const activeDeferredScopeRef = useRef("");
@@ -1568,10 +1580,9 @@ function SelfServiceCheckoutContent() {
 
       if (approvedAttempt.status !== "APPROVED") {
         const message =
-          approvedAttempt.message ||
-          (approvedAttempt.status === "PENDING"
-            ? "Терминалын төлбөр баталгаажаагүй байна."
-            : "Картын төлбөр амжилтгүй боллоо.");
+          approvedAttempt.status === "PENDING" || approvedAttempt.status === "FAILED"
+            ? getSelfServiceCardConfirmation(approvedAttempt.status).message
+            : approvedAttempt.message || "Картын төлбөр амжилтгүй боллоо.";
         throw new Error(message);
       }
 
@@ -1681,6 +1692,36 @@ function SelfServiceCheckoutContent() {
     ],
   );
 
+
+  const recheckDeferredOrder = async (record: DeferredCardCheckout) => {
+    if (!register || deferredCheckController.current || ["APPROVED", "DECLINED"].includes(record.status)) return;
+    const controller = new AbortController();
+    deferredCheckController.current = controller;
+    setCheckingDeferredId(record.attemptId);
+    setDeferredCheckError("");
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
+    try {
+      // Check the original authorization only. Never create a replacement charge.
+      const attempt = await getRestaurantCardAttemptStatus(record.attemptId, controller.signal);
+      if (controller.signal.aborted || deferredRegisterRef.current !== register.id) return;
+      if (attempt.attemptId !== record.attemptId) throw new Error("Төлбөрийн хүсэлтийн дугаар тохирохгүй байна.");
+      setDeferredCards(previous => previous.map(item => item.attemptId === record.attemptId &&
+        !["APPROVED", "DECLINED"].includes(item.status)
+        ? { ...item, status: attempt.status, transactionId: attempt.transactionId || null }
+        : item));
+      setDeferredVersion(value => value + 1);
+    } catch {
+      if (deferredCheckController.current === controller) {
+        setDeferredCheckError("Төлбөрийн баталгаажуулалтыг шалгаж чадсангүй. Мөнгө суутгагдсан эсэх тодорхойгүй. Дахин шалгана уу.");
+      }
+    } finally {
+      window.clearTimeout(timeout);
+      if (deferredCheckController.current === controller) {
+        deferredCheckController.current = null;
+        setCheckingDeferredId(null);
+      }
+    }
+  };
 
   const restoreDeferredOrder = async (record: DeferredCardCheckout) => {
     if (!register || cart.length || submitting || pendingCardCheckout || deferringCardRef.current || !["APPROVED", "DECLINED"].includes(record.status)) return;
@@ -2311,11 +2352,23 @@ function SelfServiceCheckoutContent() {
 
         {deferredCards.length > 0 && <section aria-label="Хүлээгдэж буй захиалга" className="relative z-10 mx-6 rounded-xl border border-amber-200 bg-amber-50 p-3 text-center text-sm text-amber-950">
           <p>Өмнөх {deferredCards.length} захиалга тусад нь хадгалагдсан. Шинэ захиалгыг QR-аар төлж болно.</p>
-          <div className="mt-2 flex max-h-48 flex-wrap justify-center gap-2 overflow-y-auto">{deferredCards.map(record => <button key={record.attemptId} type="button"
-            disabled={submitting || cart.length > 0 || !["APPROVED", "DECLINED"].includes(record.status)}
-            onClick={() => void restoreDeferredOrder(record)} className="rounded-lg border border-amber-300 bg-white px-3 py-2 disabled:opacity-60">
-            {formatMoney(record.amount)} · {new Date(record.createdAt).toLocaleString("mn-MN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ulaanbaatar" })} · {record.status === "APPROVED" ? "Төлөгдсөн · Баримтыг дуусгах" : record.status === "DECLINED" ? "Амжилтгүй · Сагсыг сэргээх" : "Хариуг шалгаж байна"}
-          </button>)}</div>
+          <div className="mt-2 flex max-h-64 flex-wrap justify-center gap-2 overflow-y-auto">{deferredCards.map(record => {
+            const confirmation = getSelfServiceCardConfirmation(record.status);
+            const checking = checkingDeferredId === record.attemptId;
+            return <div key={record.attemptId} className="max-w-sm rounded-lg border border-amber-300 bg-white px-3 py-2">
+              <p>{formatMoney(record.amount)} · {new Date(record.createdAt).toLocaleString("mn-MN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Ulaanbaatar" })}</p>
+              <p className="mt-1 font-bold">{confirmation.title}</p>
+              {confirmation.unresolved && <p className="mt-1 text-xs">{confirmation.message}</p>}
+              <button type="button"
+                disabled={confirmation.unresolved ? checkingDeferredId !== null : submitting || cart.length > 0 || Boolean(pendingCardCheckout)}
+                onClick={() => void (confirmation.unresolved ? recheckDeferredOrder(record) : restoreDeferredOrder(record))}
+                className="mt-2 rounded-lg border border-amber-300 px-3 py-2 font-semibold disabled:opacity-60"
+                aria-busy={checking}>
+                {checking ? "Шалгаж байна…" : confirmation.action}
+              </button>
+            </div>;
+          })}</div>
+          {deferredCheckError && <p role="alert" className="mt-2 text-rose-800">{deferredCheckError}</p>}
         </section>}
 
         <section className="relative z-10 mx-auto flex w-full max-w-5xl flex-1 flex-col items-center justify-center px-5 pb-16 pt-4 sm:px-10">
@@ -2381,6 +2434,7 @@ function SelfServiceCheckoutContent() {
   if (screen === "card") {
     const cardPaymentPending =
       submitting || pendingCardCheckout?.cardAttempt.status === "PENDING";
+    const cardConfirmation = getSelfServiceCardConfirmation(pendingCardCheckout?.cardAttempt.status);
     return (
       <main className="flex min-h-[100dvh] items-center justify-center bg-[#11231d] px-5 py-10 text-white">
         <section className="w-full max-w-xl text-center">
@@ -2394,10 +2448,10 @@ function SelfServiceCheckoutContent() {
             Картын төлбөр
           </p>
           <h1 className="mt-3 text-4xl font-black tracking-tight">
-            {cardPaymentPending ? "Картаа уншуулна уу" : "Төлбөр баталгаажсан"}
+            {cardPaymentPending && submitting ? "Картаа уншуулна уу" : cardConfirmation.title}
           </h1>
           <p className="mx-auto mt-4 max-w-md text-base font-semibold leading-7 text-white/55">
-            {cardMessage || "Терминалын дэлгэц дээрх зааврыг дагана уу."}
+            {cardConfirmation.unresolved && !submitting ? cardConfirmation.message : cardMessage || "Терминалын дэлгэц дээрх зааврыг дагана уу."}
           </p>
           {cardWaitDeadline !== null && <CardPaymentCountdown key={cardWaitDeadline}
             deadline={cardWaitDeadline} className="mt-6 text-[#f4c34f]" />}

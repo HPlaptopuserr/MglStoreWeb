@@ -264,3 +264,23 @@ test("pending diagnostics show terminal errors without presenting API success as
     assert.doesNotMatch(display, /Successful|Success|OK/);
   }
 });
+
+test("missing Minu terminal result reports confirmation failure and keeps the original payment unresolved", () => {
+  const response = { status: "000", message: "Successful", entity: {
+    invoice: "MGL-original", status: null, error: "true", rrn: null, message: null,
+  } };
+  const result = parseMinuAgentTransactionResponse(response);
+  assert.equal(result.pending, true);
+  assert.equal(result.approved, false);
+  assert.equal(result.declined, false);
+  assert.match(result.message ?? "", /баталгаажуулалт амжилтгүй/);
+  assert.doesNotMatch(result.message ?? "", /Successful/);
+  assert.match(minuPendingPaymentMessage(result.message), /эцсийн төлөв/);
+  assert.equal(result.raw, response);
+  for (const error of [true, "TRUE"]) {
+    assert.match(parseMinuAgentTransactionResponse({ ...response, entity: { ...response.entity, error } }).message ?? "", /баталгаажуулалт амжилтгүй/);
+  }
+  const approved = parseMinuAgentTransactionResponse({ ...response, entity: { ...response.entity, status: "000" } });
+  assert.equal(approved.approved, true);
+  assert.doesNotMatch(approved.message ?? "", /баталгаажуулалт амжилтгүй/);
+});
