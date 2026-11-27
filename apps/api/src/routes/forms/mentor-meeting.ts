@@ -8,6 +8,8 @@ import {
   slotId,
   checkMentorPayment,
   createMentorPayment,
+  resolveMeetingTeacher,
+  defaultMeetingTeacher,
 } from "../../services/mentor-bookings";
 const fields = [
   ["mentor", "Ментор"],
@@ -37,7 +39,7 @@ mentorMeetings.all(
       typeof invoiceId !== "string" ||
       typeof projectId !== "string" ||
       invoiceId.length !== 36 ||
-      projectId.length !== 16
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?:\.[a-f0-9]{64})?$/.test(projectId)
     )
       return res.sendStatus(400);
     res.set("Cache-Control", "no-store");
@@ -60,9 +62,19 @@ mentorMeetings.get(
     if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day))
       return res.sendStatus(400);
     try {
+      const teacher =
+        req.query.courseId === undefined
+          ? defaultMeetingTeacher
+          : await resolveMeetingTeacher(
+              req.query.courseId,
+              req.query.index,
+              req.query.name,
+            );
+      if (!teacher) return res.sendStatus(400);
       const times = mentorSlots(day);
+      const idForTime = (time: string) => slotId(time + teacher.suffix);
       const booked = await prisma.formResponse.findMany({
-        where: { form: { slug }, id: { in: times.map(slotId) } },
+        where: { form: { slug }, id: { in: times.map(idForTime) } },
         select: { id: true },
       });
       res.set("Cache-Control", "no-store");
@@ -70,7 +82,7 @@ mentorMeetings.get(
         available: times.filter(
           (time) =>
             mentorSlotOpen(time) &&
-            !booked.some((item) => item.id === slotId(time)),
+            !booked.some((item) => item.id === idForTime(time)),
         ),
       });
     } catch {
@@ -79,7 +91,10 @@ mentorMeetings.get(
   },
 );
 mentorMeetings.post(
-  "/forms/study-mentor-meeting/responses",
+  [
+    "/forms/study-mentor-meeting/responses",
+    "/forms/study-mentor-meeting/teacher-responses",
+  ],
   rateLimit({
     windowMs: 60_000,
     limit: 6,
@@ -107,20 +122,49 @@ mentorMeetings.post(
         .status(400)
         .json({ message: "Энэ цаг хаалттай. Өөр цаг сонгоно уу." });
     try {
+      let teacher = defaultMeetingTeacher;
+      if (req.path.endsWith("/teacher-responses")) {
+        const selected: unknown = req.body.data.teacher;
+        if (
+          !selected ||
+          typeof selected !== "object" ||
+          !("courseId" in selected) ||
+          !("index" in selected) ||
+          !("name" in selected)
+        )
+          return res.sendStatus(400);
+        const resolved = await resolveMeetingTeacher(
+          selected.courseId,
+          selected.index,
+          selected.name,
+        );
+        if (!resolved)
+          return res
+            .status(400)
+            .json({
+              message:
+                "Багшийн бүртгэл өөрчлөгдсөн байна. Жагсаалтыг шинэчилнэ үү.",
+            });
+        teacher = resolved;
+      }
       const form = await prisma.form.upsert({
         where: { slug },
-        update: { fields },
-        create: { slug, title: "В. Есөнтөмөр · Уулзалтын хүсэлт", fields },
+        update: { fields, title: "Багштай уулзах захиалга" },
+        create: { slug, title: "Багштай уулзах захиалга", fields },
       });
       if (!form.isActive)
         return res
           .status(410)
           .json({ message: "Уулзалтын хүсэлт түр хаалттай байна." });
-      const payment = await createMentorPayment(form.id, {
-        name: name.trim(),
-        phone,
-        requestedTime,
-      });
+      const payment = await createMentorPayment(
+        form.id,
+        {
+          name: name.trim(),
+          phone,
+          requestedTime,
+        },
+        teacher,
+      );
       return res.status(201).json({ payment });
     } catch (error) {
       if (
@@ -132,11 +176,9 @@ mentorMeetings.post(
         return res
           .status(409)
           .json({ message: "Энэ цаг захиалагдсан байна. Өөр цаг сонгоно уу." });
-      return res
-        .status(500)
-        .json({
-          message: "Төлбөрийн нэхэмжлэл үүсгэж чадсангүй. Дахин оролдоно уу.",
-        });
+      return res.status(500).json({
+        message: "Төлбөрийн нэхэмжлэл үүсгэж чадсангүй. Дахин оролдоно уу.",
+      });
     }
   },
 );

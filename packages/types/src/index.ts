@@ -90,3 +90,5 @@ export * from "./domain/pos-line-amounts";
 
 export { readPosFiscalTaxTotals } from "./domain/pos-fiscal-tax";
 export * from "./mentor-schedule";
+
+export * from "./study-teachers";

@@ -1,15 +1,11 @@
+import { studyTeachers, type StudyTeacherItem } from "@mgl/types";
+export type { StudyTeacherItem } from "@mgl/types";
 import type {
   ProjectItem,
   StudyTicketOption,
 } from "@/components/molecules/projects/project-types";
 
 const EMPTY_STUDY_PROGRAM_MARKER = "__EMPTY_STUDY_PROGRAM_ROW__";
-const EMPTY_STUDY_TEACHER_MARKER = "__EMPTY_STUDY_TEACHER_ROW__";
-
-function looksLikeUrl(value: string) {
-  return /^https?:\/\//i.test(value.trim()) || value.startsWith("data:image/");
-}
-
 export type StudySettings = {
   mentorBio: string;
   mentorPhoto: string;
@@ -30,14 +26,9 @@ export type StudyProgramItem = {
   description: string;
 };
 
-export type StudyTeacherItem = {
-  name: string;
-  description: string;
-  imageUrl?: string;
-};
-
 export const DEFAULT_STUDY_SETTINGS: StudySettings = {
-  mentorBio: "MGL CLUB-ийн үүсгэн байгуулагч. 2003 оноос бизнес эрхэлж, жижиг, дунд бизнесийн хамтын ажиллагааг дэмжиж ирсэн. 2013 онд «Эх орон» телевизэд сэтгүүлчээр ажиллаж байв.",
+  mentorBio:
+    "MGL CLUB-ийн үүсгэн байгуулагч. 2003 оноос бизнес эрхэлж, жижиг, дунд бизнесийн хамтын ажиллагааг дэмжиж ирсэн. 2013 онд «Эх орон» телевизэд сэтгүүлчээр ажиллаж байв.",
   mentorPhoto: "/mgl-club/mentor-yesuntumur.jpg",
   eyebrow: "Training access",
   title: "Сургалт",
@@ -96,8 +87,12 @@ export function normalizeStudySettings(raw: unknown): StudySettings {
   };
 
   return {
-    mentorBio: String(record.mentorBio ?? DEFAULT_STUDY_SETTINGS.mentorBio).trim(),
-    mentorPhoto: String(record.mentorPhoto ?? DEFAULT_STUDY_SETTINGS.mentorPhoto).trim(),
+    mentorBio: String(
+      record.mentorBio ?? DEFAULT_STUDY_SETTINGS.mentorBio,
+    ).trim(),
+    mentorPhoto: String(
+      record.mentorPhoto ?? DEFAULT_STUDY_SETTINGS.mentorPhoto,
+    ).trim(),
     eyebrow: clean(record.eyebrow, DEFAULT_STUDY_SETTINGS.eyebrow),
     title: clean(record.title, DEFAULT_STUDY_SETTINGS.title),
     accentTitle: clean(record.accentTitle, DEFAULT_STUDY_SETTINGS.accentTitle),
@@ -220,27 +215,6 @@ export function parseProgramItems(material: ProjectItem): StudyProgramItem[] {
   });
 }
 
-export function parseTeacherItems(material: ProjectItem): StudyTeacherItem[] {
-  return String(material.teacherInfo || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line && line !== EMPTY_STUDY_TEACHER_MARKER)
-    .map((line) => {
-      const [rawName, ...rawDescriptionParts] = line.split("::");
-      const description = rawDescriptionParts[0]?.trim() || "";
-      const imageUrl = rawDescriptionParts.slice(1).join("::").trim();
-      const name = rawName.trim();
-      if (looksLikeUrl(name) && !description && !imageUrl) {
-        return {
-          name: "Багшийн мэдээлэл",
-          description: "",
-          imageUrl: name,
-        };
-      }
-      return {
-        name: name || "Багшийн мэдээлэл",
-        description,
-        imageUrl,
-      };
-    });
+export function parseTeacherItems(material: ProjectItem) {
+  return studyTeachers(material.teacherInfo);
 }

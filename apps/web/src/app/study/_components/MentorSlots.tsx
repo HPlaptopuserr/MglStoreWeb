@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { mentorSlots } from "@mgl/types";
+import type { BookingTeacher } from "./MeetingBooking";
 import { API } from "@/lib/api";
 
 function today() {
@@ -12,7 +13,13 @@ function today() {
     day: "2-digit",
   }).format(new Date());
 }
-export function MentorSlots({ refresh }: { refresh: number }) {
+export function MentorSlots({
+  refresh,
+  teacher,
+}: {
+  refresh: number;
+  teacher: BookingTeacher;
+}) {
   const [day, setDay] = useState(today);
   const [retry, setRetry] = useState(0);
   const [selection, setSelection] = useState("");
@@ -21,16 +28,21 @@ export function MentorSlots({ refresh }: { refresh: number }) {
     available: string[];
     failed: boolean;
   }>();
-  const key = day + "/" + refresh + "/" + retry;
+  const params = new URLSearchParams({ date: day });
+  if (teacher.courseId) {
+    params.set("courseId", teacher.courseId);
+    params.set("index", String(teacher.index));
+    params.set("name", teacher.name);
+  }
+  const query = params.toString();
+  const key = query + "/" + refresh + "/" + retry;
   useEffect(() => {
     if (!day) return;
     const controller = new AbortController();
     async function load() {
       try {
         const res = await fetch(
-          API +
-            "/forms/study-mentor-meeting/availability?date=" +
-            encodeURIComponent(day),
+          API + "/forms/study-mentor-meeting/availability?" + query,
           { cache: "no-store", signal: controller.signal },
         );
         if (!res.ok) throw new Error();
@@ -52,7 +64,7 @@ export function MentorSlots({ refresh }: { refresh: number }) {
     }
     void load();
     return () => controller.abort();
-  }, [day, key]);
+  }, [day, key, query]);
   const ready = result?.key === key && !result.failed;
   return (
     <fieldset className="grid gap-3">

@@ -210,11 +210,21 @@ export function StudySections({
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2
               id="study-results-heading"
-              className="text-xl font-bold text-slate-950"
+              className={
+                teachersTab
+                  ? "mx-auto w-full max-w-3xl text-3xl font-bold tracking-tight text-slate-950"
+                  : "text-xl font-bold text-slate-950"
+              }
             >
               {teachersTab ? "Багш нар" : settings.listTitle || "Сургалтууд"}
             </h2>
-            <div className="flex items-center gap-3">
+            <div
+              className={
+                teachersTab && !loading && !error
+                  ? "hidden"
+                  : "flex items-center gap-3"
+              }
+            >
               <p role="status" className="text-sm text-slate-600">
                 {loading
                   ? "Уншиж байна…"
@@ -268,10 +278,6 @@ export function StudySections({
               settings={settings}
               openingId={openingId}
               onOpen={onOpenMaterial}
-              onMentor={() => {
-                setTab("mentor");
-                window.scrollTo(0, 0);
-              }}
             />
           ) : filtered.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center">

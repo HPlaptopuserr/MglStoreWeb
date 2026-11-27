@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { studyMentorName, studyTeacherKey, studyTeachers } from "@mgl/types";
+import { createHash, randomUUID } from "node:crypto";
 import { prisma, type Prisma } from "@mgl/database";
 import { sendSmtpMail, isSmtpConfigured } from "../lib/smtp";
 import {
@@ -15,6 +16,56 @@ const recipient = "togskhurts@gmail.com";
 const holdMs = 15 * 60_000;
 const state = (phase: string) => ({ path: ["phase"], equals: phase });
 export const slotId = (time: string) => mentorForm + "-" + time;
+
+type MeetingTeacher = { name: string; suffix: string };
+export const defaultMeetingTeacher: MeetingTeacher = {
+  name: studyMentorName,
+  suffix: "",
+};
+
+export async function resolveMeetingTeacher(
+  courseId: unknown,
+  index: unknown,
+  name: unknown,
+): Promise<MeetingTeacher | null> {
+  if (
+    typeof courseId !== "string" ||
+    !courseId ||
+    typeof name !== "string" ||
+    !(typeof index === "number" || typeof index === "string") ||
+    !/^\d{1,5}$/.test(String(index))
+  )
+    return null;
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: "site-study" },
+  });
+  const courses: unknown = JSON.parse(setting?.value || "[]");
+  if (!Array.isArray(courses)) return null;
+  const course: unknown = courses.find(
+    (v: unknown) =>
+      v &&
+      typeof v === "object" &&
+      "id" in v &&
+      v.id === courseId &&
+      !("isActive" in v && v.isActive === false),
+  );
+  if (
+    !course ||
+    typeof course !== "object" ||
+    !("teacherInfo" in course) ||
+    typeof course.teacherInfo !== "string"
+  )
+    return null;
+  const person = studyTeachers(course.teacherInfo)[Number(index)];
+  if (!person || person.name !== name) return null;
+  const key = studyTeacherKey(person, courseId);
+  if (key === studyTeacherKey({ name: studyMentorName, description: "" }, ""))
+    return defaultMeetingTeacher;
+  return {
+    name: person.name,
+    suffix: "." + createHash("sha256").update(key).digest("hex"),
+  };
+}
 
 async function credentials() {
   const setting = await prisma.siteSetting.findUnique({
@@ -62,17 +113,19 @@ async function credentials() {
 export async function createMentorPayment(
   formId: string,
   details: { name: string; phone: string; requestedTime: string },
+  teacher = defaultMeetingTeacher,
 ) {
   const auth = await credentials();
   const base = process.env.API_PUBLIC_URL?.replace(/\/+$/, "");
   if (!base?.startsWith("https://"))
     throw new Error("Public callback unavailable");
   const reference = randomUUID();
-  const id = slotId(details.requestedTime);
+  const bookingKey = details.requestedTime + teacher.suffix;
+  const id = slotId(bookingKey);
   const expiresAt = new Date(Date.now() + holdMs).toISOString();
   const data = {
     ...details,
-    mentor: "В. Есөнтөмөр",
+    mentor: teacher.name,
     amount: mentorFee,
     reference,
     expiresAt,
@@ -84,7 +137,7 @@ export async function createMentorPayment(
   try {
     const params = new URLSearchParams({
       invoiceId: reference,
-      projectId: details.requestedTime,
+      projectId: bookingKey,
     });
     const invoice = await createSystemQrInvoice(
       {
@@ -110,6 +163,7 @@ export async function createMentorPayment(
     if (!updated.count) throw new Error("Reservation expired");
     return {
       invoiceId: reference,
+      bookingKey,
       amount: mentorFee,
       expiresAt,
       qrText: String(invoice.qrText),
@@ -165,8 +219,14 @@ async function reconcile(row: BookingRow) {
       },
     });
     if (settled.count) return true;
-    const latest = await prisma.formResponse.findUnique({ where: { id: row.id } });
-    return Boolean(latest && record(latest).phase === "paid" && record(latest).reference === data.reference);
+    const latest = await prisma.formResponse.findUnique({
+      where: { id: row.id },
+    });
+    return Boolean(
+      latest &&
+      record(latest).phase === "paid" &&
+      record(latest).reference === data.reference,
+    );
   }
   if (Date.parse(String(data.expiresAt)) <= Date.now()) {
     // Only a successful provider cancellation releases a published QR's slot.
@@ -187,7 +247,8 @@ export async function checkMentorPayment(time: string, reference: string) {
 export function mentorNotice(data: Record<string, string | number>) {
   return {
     to: recipient,
-    subject: "В. Есөнтөмөр · Уулзалтын шинэ захиалга",
+    subject:
+      String(data.mentor || studyMentorName) + " · Уулзалтын шинэ захиалга",
     text: [
       String(data.requestedTime).replace("T", " ") + " (Улаанбаатарын цаг)",
       "Нэр: " + data.name,
