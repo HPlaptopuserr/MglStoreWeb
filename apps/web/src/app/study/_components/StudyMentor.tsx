@@ -1,17 +1,23 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { MentorSlots } from "./MentorSlots";
 import { CalendarDays } from "lucide-react";
 import { API } from "@/lib/api";
 import { StudyTeacherAvatar } from "./StudyTeacherAvatar";
 
 export function StudyMentor({ bio, photo }: { bio: string; photo: string }) {
   const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
+  const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState("");
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (status !== "idle") return;
     const fields = new FormData(event.currentTarget);
+    if (!fields.get("requestedTime")) {
+      setError("Сул цаг сонгоно уу.");
+      return;
+    }
     setStatus("sending");
     setError("");
     try {
@@ -21,6 +27,8 @@ export function StudyMentor({ bio, photo }: { bio: string; photo: string }) {
         body: JSON.stringify({ data: Object.fromEntries(fields) }),
       });
       if (!res.ok) {
+        if (res.status === 409 || res.status === 400)
+          setRefresh((value) => value + 1);
         const result: unknown = await res.json().catch(() => null);
         throw new Error(
           result &&
@@ -115,28 +123,14 @@ export function StudyMentor({ bio, photo }: { bio: string; photo: string }) {
                 placeholder="8 оронтой дугаар"
               />
             </label>
-            <label>
-              Хүссэн өдөр, цаг (Улаанбаатар)
-              <input
-                className={field}
-                required
-                name="requestedTime"
-                type="datetime-local"
-              />
-            </label>
+            <fieldset disabled={status === "sending"}>
+              <MentorSlots refresh={refresh} />
+            </fieldset>
             {error && (
               <p role="alert" className="text-red-700">
                 {error}
               </p>
             )}
-            <button
-              disabled={status === "sending"}
-              className="min-h-12 rounded-xl bg-sky-700 px-4 font-semibold text-white disabled:opacity-60"
-            >
-              {status === "sending"
-                ? "Илгээж байна…"
-                : "Уулзалтын хүсэлт илгээх"}
-            </button>
           </form>
         )}
       </section>

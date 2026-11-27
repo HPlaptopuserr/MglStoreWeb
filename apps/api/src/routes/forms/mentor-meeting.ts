@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { rateLimit } from "express-rate-limit";
+import { mentorSlotOpen, mentorSlots } from "@mgl/types";
 import { prisma } from "@mgl/database";
 
 const slug = "study-mentor-meeting";
@@ -11,6 +12,32 @@ const fields = [
 ].map(([id, label]) => ({ id, label, type: "text", required: true }));
 
 export const mentorMeetings: Router = Router();
+const slotId = (time: string) => slug + "-" + time;
+mentorMeetings.get(
+  "/forms/study-mentor-meeting/availability",
+  async (req, res) => {
+    const day = req.query.date;
+    if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day))
+      return res.sendStatus(400);
+    try {
+      const times = mentorSlots(day);
+      const booked = await prisma.formResponse.findMany({
+        where: { form: { slug }, id: { in: times.map(slotId) } },
+        select: { id: true },
+      });
+      res.set("Cache-Control", "no-store");
+      return res.json({
+        available: times.filter(
+          (time) =>
+            mentorSlotOpen(time) &&
+            !booked.some((item) => item.id === slotId(time)),
+        ),
+      });
+    } catch {
+      return res.sendStatus(503);
+    }
+  },
+);
 mentorMeetings.post(
   "/forms/study-mentor-meeting/responses",
   rateLimit({
@@ -35,17 +62,10 @@ mentorMeetings.post(
       return res
         .status(400)
         .json({ message: "Нэр, 8 оронтой утас, хүссэн өдрөө шалгана уу." });
-    const local = new Date(requestedTime + ":00Z");
-    const instant = Date.parse(requestedTime + ":00+08:00");
-    if (
-      !Number.isFinite(instant) ||
-      !Number.isFinite(local.getTime()) ||
-      local.toISOString().slice(0, 16) !== requestedTime ||
-      instant <= Date.now()
-    )
+    if (!mentorSlotOpen(requestedTime))
       return res
         .status(400)
-        .json({ message: "Ирээдүйн өдөр, цаг сонгоно уу." });
+        .json({ message: "Энэ цаг хаалттай. Өөр цаг сонгоно уу." });
     try {
       const form = await prisma.form.upsert({
         where: { slug },
@@ -58,6 +78,7 @@ mentorMeetings.post(
           .json({ message: "Уулзалтын хүсэлт түр хаалттай байна." });
       await prisma.formResponse.create({
         data: {
+          id: slotId(requestedTime),
           formId: form.id,
           data: {
             mentor: "В. Есөнтөмөр",
@@ -68,7 +89,16 @@ mentorMeetings.post(
         },
       });
       return res.status(201).json({ success: true });
-    } catch {
+    } catch (error) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "P2002"
+      )
+        return res
+          .status(409)
+          .json({ message: "Энэ цаг захиалагдсан байна. Өөр цаг сонгоно уу." });
       return res
         .status(500)
         .json({ message: "Хүсэлт хадгалахад алдаа гарлаа." });

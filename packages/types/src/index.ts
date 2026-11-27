@@ -89,3 +89,4 @@ export * from "./domain/pos-inclusive-tax";
 export * from "./domain/pos-line-amounts";
 
 export { readPosFiscalTaxTotals } from "./domain/pos-fiscal-tax";
+export * from "./mentor-schedule";
