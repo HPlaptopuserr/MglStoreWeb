@@ -7,6 +7,7 @@ import {
   MapPin,
 } from "lucide-react";
 import type { ProjectItem } from "@/components/molecules/projects/project-types";
+import { StudyTeacherAvatar } from "./StudyTeacherAvatar";
 import { getProjectImages } from "@/components/molecules/projects/project-utils";
 import {
   getCourseScheduleText,
@@ -62,10 +63,11 @@ function StudyMaterialImage({
         <img
           src={primaryImage}
           alt={material.title}
-          className={`transition duration-500 ${
+          loading="lazy"
+          className={`transition duration-500 motion-reduce:transition-none ${
             preserveAspectRatio
               ? "block h-auto max-h-[260px] w-full object-contain group-hover:scale-[1.02]"
-              : `h-full w-full group-hover:scale-105 ${imageClassName}`
+              : `h-full w-full motion-safe:group-hover:scale-105 ${imageClassName}`
           }`}
         />
       ) : (
@@ -177,88 +179,129 @@ export function StudyMaterialCard({
   onOpen,
 }: StudyCardProps) {
   const teachers = parseTeacherItems(material);
+  const leadTeacher = teachers[0];
   const ticketOptions = getStudyTicketOptions(material);
-  const instructor = teachers[0]?.name || "Багшийн мэдээлэл удахгүй";
-  const venue = material.address || material.location || "";
-  const scheduleText =
-    [getCourseScheduleText(material), material.duration]
-      .map((value) => String(value || "").trim())
-      .filter(Boolean)
-      .join(" · ") || "Хуваарь удахгүй";
-  const oldPriceText = getOldPriceText(material);
+  const venue = material.address || material.location;
+  const schedule = [getCourseScheduleText(material), material.duration]
+    .filter(Boolean)
+    .join(" · ");
+  const oldPrice = Number(material.originalPrice || 0);
+  const busy = openingId === material.id;
 
   return (
-    <article className="group w-full max-w-[300px] rounded-[18px] border border-slate-200 bg-white p-4 shadow-[0_3px_12px_rgba(15,23,42,0.07)] transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_16px_32px_rgba(15,23,42,0.11)]">
-      <button
-        type="button"
-        onClick={() => onOpen(material)}
-        disabled={openingId === material.id}
-        className="block w-full rounded-xl text-left focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-100 disabled:opacity-70"
-      >
-        <StudyMaterialImage
-          material={material}
-          className="min-h-36 rounded-xl"
-          iconClassName="h-10 w-10"
-          preserveAspectRatio
-        />
-
-        <div className="pt-5">
-          <h3 className="line-clamp-2 break-words text-xl font-extrabold leading-[1.25] tracking-tight text-slate-900 [overflow-wrap:anywhere]">
-            {material.title}
-          </h3>
-          <p className="mt-2 line-clamp-1 text-sm font-semibold text-slate-500">
-            {instructor}
-          </p>
-          <p className="mt-2 flex min-w-0 items-center gap-2 text-sm font-bold text-emerald-700">
-            <CalendarDays className="h-4 w-4 shrink-0" />
-            <span className="line-clamp-1">{scheduleText}</span>
-          </p>
-          {venue && (
-            <p className="mt-2 flex min-w-0 items-center gap-2 text-xs font-semibold text-slate-500">
-              <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
-              <span className="line-clamp-1">{venue}</span>
-            </p>
-          )}
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <span className="rounded-md bg-cyan-50 px-2.5 py-1 text-xs font-bold text-cyan-800">
+    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="p-4 sm:p-5">
+        <button
+          type="button"
+          onClick={() => onOpen(material)}
+          disabled={busy}
+          className="group grid w-full grid-cols-[96px_minmax(0,1fr)] items-start gap-4 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sky-600 disabled:opacity-60"
+        >
+          <StudyMaterialImage
+            material={material}
+            className="aspect-square rounded-xl"
+            iconClassName="h-9 w-9"
+            imageClassName="object-contain"
+          />
+          <div className="min-w-0">
+            <span className="inline-block rounded-md bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-800">
               {material.category || "Сургалт"}
             </span>
-            <span className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600">
-              {material.registrationLabel || "Бүртгэл нээлттэй"}
+            <h3 className="mt-2 break-words text-lg font-bold leading-6 text-slate-950">
+              {material.title}
+            </h3>
+            <span className="mt-2 inline-flex min-h-6 items-center gap-1 text-xs font-semibold text-sky-700">
+              Дэлгэрэнгүй
+              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
             </span>
           </div>
+        </button>
+        {material.summary && (
+          <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-600">
+            {material.summary}
+          </p>
+        )}
+        <div className="mt-4 rounded-xl bg-slate-50 p-3">
+          {leadTeacher ? (
+            <div className="flex items-center gap-3">
+              <StudyTeacherAvatar teacher={leadTeacher} />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-slate-500">Сургалтыг хөтлөх багш</p>
+                <p className="break-words text-sm font-semibold text-slate-900">
+                  {leadTeacher.name}
+                </p>
+                {leadTeacher.description && (
+                  <p className="mt-0.5 line-clamp-2 text-xs leading-5 text-slate-600">
+                    {leadTeacher.description}
+                  </p>
+                )}
+                {teachers.length > 1 && (
+                  <p className="mt-1 text-xs font-semibold text-sky-700">
+                    +{teachers.length - 1} багш · Дэлгэрэнгүйгээс үзэх
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">
+              Багшийн мэдээлэл удахгүй нэмэгдэнэ
+            </p>
+          )}
         </div>
-      </button>
-
-      <div className="mt-5 border-t border-slate-100">
-        {ticketOptions.map((option, optionIndex) => (
+        {(schedule || venue) && (
+          <div className="mt-4 space-y-2 text-sm leading-5 text-slate-600">
+            {schedule && (
+              <p className="flex items-start gap-2">
+                <CalendarDays
+                  className="mt-0.5 h-4 w-4 shrink-0 text-slate-400"
+                  aria-hidden="true"
+                />
+                <span>{schedule}</span>
+              </p>
+            )}
+            {venue && (
+              <p className="flex items-start gap-2">
+                <MapPin
+                  className="mt-0.5 h-4 w-4 shrink-0 text-slate-400"
+                  aria-hidden="true"
+                />
+                <span className="break-words">{venue}</span>
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="border-t border-slate-200 px-4 pb-2 pt-3 sm:px-5">
+        <p className="mb-1 text-xs font-semibold text-slate-500">
+          Үнийн сонголт · Дэлгэрэнгүй үзэх
+        </p>
+        {ticketOptions.map((option, index) => (
           <button
             key={option.id}
             type="button"
             onClick={() => onOpen(material, option.id)}
-            disabled={openingId === material.id}
-            className={`flex w-full items-center justify-between gap-3 py-3 text-left transition hover:text-orange-600 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-100 disabled:opacity-70 ${
-              optionIndex > 0 ? "border-t border-slate-100" : ""
-            }`}
+            disabled={busy}
+            aria-label={`${option.label}, ${formatStudyPrice(option.price)}, дэлгэрэнгүй`}
+            className={`flex min-h-14 w-full items-center justify-between gap-3 rounded-lg py-3 text-left transition-colors hover:bg-sky-50 focus-visible:outline-2 focus-visible:outline-sky-600 disabled:opacity-60 ${index > 0 ? "border-t border-slate-100" : ""}`}
           >
-            <span className="min-w-0">
-              <span className="block truncate text-[10px] font-bold uppercase leading-4 tracking-[0.08em] text-slate-500">
-                {option.label}
-              </span>
-              <span className="mt-0.5 flex items-baseline gap-2">
-                <span className="text-xl font-black leading-6 tracking-tight text-slate-900">
+            <span className="min-w-0 break-words text-sm font-medium leading-5 text-slate-700">
+              {option.label}
+            </span>
+            <span className="flex shrink-0 items-center gap-2">
+              <span className="text-right">
+                <span className="block whitespace-nowrap text-base font-bold tabular-nums text-sky-700">
                   {formatStudyPrice(option.price)}
                 </span>
-                {optionIndex === 0 && oldPriceText && (
-                  <span className="text-sm font-semibold text-slate-400 line-through">
-                    {oldPriceText}
+                {index === 0 && oldPrice > option.price && (
+                  <span className="block text-xs text-slate-500 line-through">
+                    {formatStudyPrice(oldPrice)}
                   </span>
                 )}
               </span>
-            </span>
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 text-slate-500 transition group-hover:bg-orange-50 group-hover:text-orange-600">
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight
+                className="h-4 w-4 text-sky-600"
+                aria-hidden="true"
+              />
             </span>
           </button>
         ))}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   BookOpenCheck,
@@ -18,10 +18,9 @@ import type {
   StudyTicketOption,
 } from "@/components/molecules/projects/project-types";
 import { getProjectImages } from "@/components/molecules/projects/project-utils";
+import { StudyTeacherAvatar as TeacherAvatar } from "./StudyTeacherAvatar";
 import { useLockedBodyScroll } from "./useLockedBodyScroll";
 import {
-  FALLBACK_PROGRAM_ITEMS,
-  FALLBACK_TEACHER_ITEMS,
   formatStudyPrice,
   getCourseScheduleText,
   getStudyTicketOptions,
@@ -62,28 +61,85 @@ export function StudyCourseModal({
   const scheduleText = getCourseScheduleText(material);
   const teacherItems = parseTeacherItems(material);
   const programItems = parseProgramItems(material);
-  const visibleProgramItems =
-    programItems.length > 0 ? programItems : FALLBACK_PROGRAM_ITEMS;
+  const visibleProgramItems = programItems;
   const visibleTeacherItems =
-    teacherItems.length > 0 ? teacherItems : FALLBACK_TEACHER_ITEMS;
+    teacherItems.length > 0
+      ? teacherItems
+      : [
+          {
+            name: "Багшийн мэдээлэл удахгүй",
+            description: "Танилцуулга нэмэгдсэнээр энд харагдана.",
+          },
+        ];
   const hasTeacherItems = teacherItems.length > 0;
 
+  const dialogRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
   useLockedBodyScroll();
+  useEffect(() => {
+    const previous = document.activeElement;
+    closeRef.current?.focus();
+    return () => {
+      if (previous instanceof HTMLElement)
+        previous.focus({ preventScroll: true });
+    };
+  }, []);
 
   return (
     <div className="fixed inset-0 z-[90] overflow-hidden bg-slate-950/75 px-3 py-4 backdrop-blur-md sm:px-6">
       <button
         type="button"
         className="fixed inset-0 -z-10"
+        tabIndex={-1}
         onClick={onClose}
         aria-label="Хаах"
       />
 
       <article
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="study-dialog-title"
+        tabIndex={-1}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.stopPropagation();
+            onClose();
+          }
+          if (event.key !== "Tab") return;
+          const targets = Array.from(
+            dialogRef.current?.querySelectorAll<HTMLElement>(
+              'button:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], summary, [tabindex="0"]',
+            ) || [],
+          ).filter((node) => node.getClientRects().length > 0);
+          const first = targets[0];
+          const last = targets[targets.length - 1];
+          if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last?.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first?.focus();
+          }
+        }}
         className="mx-auto max-h-[calc(100dvh-2rem)] w-full max-w-6xl overflow-y-auto overscroll-contain rounded-[28px] bg-slate-50 shadow-2xl"
         onWheel={(event) => event.stopPropagation()}
         onTouchMove={(event) => event.stopPropagation()}
       >
+        <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-5 py-3">
+          <p className="text-sm font-semibold text-slate-700">
+            Сургалтын дэлгэрэнгүй
+          </p>
+          <button
+            ref={closeRef}
+            type="button"
+            onClick={onClose}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200 focus-visible:outline-2 focus-visible:outline-sky-600"
+            aria-label="Сургалтын дэлгэрэнгүйг хаах"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
         <div className="relative overflow-hidden bg-[#0d1b14] text-white">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(16,185,129,0.16),transparent_34%),radial-gradient(circle_at_86%_0%,rgba(249,115,22,0.16),transparent_28%)]" />
           <div className="relative mx-auto grid max-w-6xl gap-7 px-5 py-7 sm:px-8 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-8">
@@ -98,7 +154,10 @@ export function StudyCourseModal({
                     "Бүртгэл авч байна"}
                 </span>
               </div>
-              <h2 className="mt-5 max-w-4xl break-words text-3xl font-black leading-tight tracking-tight text-white sm:text-4xl lg:text-5xl">
+              <h2
+                id="study-dialog-title"
+                className="mt-5 max-w-4xl break-words text-3xl font-black leading-tight tracking-tight text-white sm:text-4xl lg:text-5xl"
+              >
                 {material.title}
               </h2>
               <p className="mt-4 max-w-3xl break-words text-base leading-8 text-white/72">
@@ -109,7 +168,7 @@ export function StudyCourseModal({
               <div className="mt-6 grid max-w-3xl gap-3 sm:grid-cols-2">
                 <HeroMetaCard
                   label="Хүний тоо"
-                  value={material.capacity || "Admin-аас оруулна"}
+                  value={material.capacity || "Тодруулаагүй"}
                 />
                 <HeroMetaCard
                   label="Төлөв"
@@ -117,11 +176,11 @@ export function StudyCourseModal({
                 />
                 <HeroMetaCard
                   label="Хэлбэр"
-                  value={material.location || "Online сургалт удахгүй"}
+                  value={material.location || "Тодруулаагүй"}
                 />
                 <HeroMetaCard
                   label="Хаяг"
-                  value={material.address || "Хаяг оруулаагүй"}
+                  value={material.address || "Хаяг удахгүй нэмэгдэнэ"}
                 />
               </div>
 
@@ -142,22 +201,22 @@ export function StudyCourseModal({
               registering={registering}
               onSelectTicketOption={setSelectedTicketOptionId}
               onRegister={onRegister}
-              onClose={onClose}
             />
           </div>
         </div>
 
         <div className="mx-auto max-w-6xl px-5 py-7 sm:px-8 lg:py-8">
           <div className="space-y-6">
-            <TeacherGrid
-              teachers={visibleTeacherItems}
-              hasTeachers={hasTeacherItems}
-            />
-            <LearningOutcomes items={visibleProgramItems} />
-            <ProgramAccordion
-              items={visibleProgramItems}
-              duration={material.duration}
-            />
+            <TeacherGrid teachers={visibleTeacherItems} />
+            {visibleProgramItems.length > 0 && (
+              <>
+                <LearningOutcomes items={visibleProgramItems} />
+                <ProgramAccordion
+                  items={visibleProgramItems}
+                  duration={material.duration}
+                />
+              </>
+            )}
           </div>
         </div>
       </article>
@@ -183,12 +242,8 @@ function HeroTeacherPanel({
           <div className="relative shrink-0">
             <TeacherAvatar
               teacher={leadTeacher}
-              hasTeachers={hasTeachers}
               className="h-20 w-20 rounded-[24px] ring-4 ring-white/10"
             />
-            <span className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-300 text-emerald-950 ring-4 ring-[#17271e]">
-              <CheckCircle2 className="h-4 w-4" />
-            </span>
           </div>
 
           <div className="min-w-0 flex-1">
@@ -197,7 +252,9 @@ function HeroTeacherPanel({
                 Сургалтыг хөтлөх багш
               </p>
               <span className="rounded-full bg-emerald-300/14 px-2.5 py-1 text-[11px] font-black text-emerald-100 ring-1 ring-emerald-200/20">
-                {hasTeachers ? `${teachers.length} багш` : "Admin-аас нэмнэ"}
+                {hasTeachers
+                  ? `${teachers.length} багш`
+                  : "Танилцуулга хүлээгдэж байна"}
               </span>
             </div>
             <h3 className="mt-2 break-words text-2xl font-black leading-tight text-white">
@@ -205,7 +262,7 @@ function HeroTeacherPanel({
             </h3>
             <p className="mt-2 line-clamp-2 break-words text-sm font-semibold leading-6 text-white/68">
               {leadTeacher.description ||
-                "Багшийн зураг, нэр, товч танилцуулгыг admin дээрээс оруулна."}
+                "Багшийн танилцуулга удахгүй нэмэгдэнэ."}
             </p>
           </div>
 
@@ -215,53 +272,13 @@ function HeroTeacherPanel({
                 <TeacherAvatar
                   key={`hero-teacher-${index}`}
                   teacher={teacher}
-                  hasTeachers={hasTeachers}
                   className="-ml-2 h-10 w-10 rounded-2xl ring-2 ring-[#17271e] first:ml-0"
                 />
               ))}
             </div>
           )}
         </div>
-        <div className="mt-4 grid gap-2 border-t border-white/10 pt-4 text-xs font-black text-white/72 sm:grid-cols-3">
-          <span className="rounded-2xl bg-black/14 px-3 py-2">
-            Практик туршлага
-          </span>
-          <span className="rounded-2xl bg-black/14 px-3 py-2">
-            Асуулт хариулт
-          </span>
-          <span className="rounded-2xl bg-black/14 px-3 py-2">
-            Дадлага төвтэй
-          </span>
-        </div>
       </div>
-    </div>
-  );
-}
-
-function TeacherAvatar({
-  teacher,
-  hasTeachers,
-  className,
-}: {
-  teacher: { name: string; imageUrl?: string };
-  hasTeachers: boolean;
-  className: string;
-}) {
-  return (
-    <div
-      className={`flex shrink-0 items-center justify-center overflow-hidden bg-emerald-200 text-base font-black text-emerald-950 ${className}`}
-    >
-      {teacher.imageUrl ? (
-        <img
-          src={teacher.imageUrl}
-          alt={teacher.name}
-          className="h-full w-full object-cover"
-        />
-      ) : hasTeachers ? (
-        teacher.name.slice(0, 1).toUpperCase()
-      ) : (
-        <UserRound className="h-5 w-5" />
-      )}
     </div>
   );
 }
@@ -288,7 +305,6 @@ function RegistrationPanel({
   registering,
   onSelectTicketOption,
   onRegister,
-  onClose,
 }: {
   material: ProjectItem;
   primaryImage?: string;
@@ -300,24 +316,15 @@ function RegistrationPanel({
   registering: boolean;
   onSelectTicketOption: (ticketOptionId: string) => void;
   onRegister: (material: ProjectItem, ticketOptionId?: string) => void;
-  onClose: () => void;
 }) {
   return (
     <aside className="relative overflow-hidden rounded-3xl border border-white/15 bg-white text-slate-950 shadow-2xl">
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute right-3 top-3 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-slate-500 shadow-lg transition hover:bg-slate-100 hover:text-slate-950"
-        aria-label="Хаах"
-      >
-        <X className="h-5 w-5" />
-      </button>
       <div className="aspect-video overflow-hidden bg-slate-100">
         {primaryImage ? (
           <img
             src={primaryImage}
             alt={material.title}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-contain"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-emerald-50 text-emerald-600">
@@ -342,36 +349,45 @@ function RegistrationPanel({
             ? "Таны сургалтын бүртгэл баталгаажсан."
             : "Мэдээллээ шалгаад сургалтад бүртгүүлнэ үү."}
         </p>
-        <div className="mt-5 space-y-2.5">
+        <fieldset className="mt-5 space-y-2.5">
+          <legend className="mb-2 text-sm font-semibold text-slate-700">
+            Үнийн сонголтоо сонгоно уу
+          </legend>
           {ticketOptions.map((option) => {
             const selected = option.id === selectedTicketOptionId;
             return (
-              <button
+              <label
                 key={option.id}
-                type="button"
-                onClick={() => onSelectTicketOption(option.id)}
-                disabled={registered || registering}
-                className={`flex w-full items-center justify-between gap-4 rounded-2xl border-2 px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-70 ${
+                className={`flex min-h-14 w-full cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors focus-within:ring-2 focus-within:ring-sky-600 ${
                   selected
                     ? "border-sky-500 bg-sky-50 ring-4 ring-sky-100"
                     : "border-slate-200 bg-white hover:border-sky-300"
                 }`}
               >
-                <span className="font-black text-slate-800">
+                <input
+                  type="radio"
+                  name="study-ticket"
+                  value={option.id}
+                  checked={selected}
+                  onChange={() => onSelectTicketOption(option.id)}
+                  disabled={registered || registering}
+                  className="h-4 w-4 shrink-0 accent-sky-700"
+                />
+                <span className="min-w-0 flex-1 break-words text-sm font-semibold text-slate-800">
                   {option.label}
                 </span>
-                <span className="text-lg font-black text-sky-600">
+                <span className="shrink-0 text-base font-bold tabular-nums text-sky-700">
                   {formatStudyPrice(option.price)}
                 </span>
-              </button>
+              </label>
             );
           })}
-        </div>
+        </fieldset>
         <button
           type="button"
           onClick={() => onRegister(material, selectedTicketOptionId)}
           disabled={registered || registering}
-          className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-black text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-70"
+          className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-sky-700 px-5 text-sm font-bold text-white transition-colors hover:bg-sky-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {registered ? (
             <>
@@ -400,7 +416,7 @@ function RegistrationPanel({
               <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
             }
           >
-            {material.location || "Online сургалт удахгүй"}
+            {material.location || "Байршил удахгүй нэмэгдэнэ"}
             {material.address ? ` · ${material.address}` : ""}
           </RegistrationDetail>
           <RegistrationDetail
@@ -408,7 +424,7 @@ function RegistrationPanel({
               <Users className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
             }
           >
-            {material.capacity || "Хүний тоо admin-аас оруулна"}
+            {material.capacity || "Хүний тоо удахгүй нэмэгдэнэ"}
           </RegistrationDetail>
           <RegistrationDetail
             icon={
@@ -494,8 +510,7 @@ function ProgramAccordion({
               </span>
             </summary>
             <p className="px-5 py-4 text-sm leading-7 text-slate-600">
-              {item.description ||
-                "Энэ хэсгийн дэлгэрэнгүй тайлбарыг admin дээр сургалтын хөтөлбөрийн талбарт нэмнэ."}
+              {item.description || "Дэлгэрэнгүй тайлбар удахгүй нэмэгдэнэ."}
             </p>
           </details>
         ))}
@@ -506,10 +521,8 @@ function ProgramAccordion({
 
 function TeacherGrid({
   teachers,
-  hasTeachers,
 }: {
   teachers: { name: string; description: string; imageUrl?: string }[];
-  hasTeachers: boolean;
 }) {
   return (
     <section className="overflow-hidden rounded-3xl border border-emerald-100 bg-white shadow-sm">
@@ -528,12 +541,11 @@ function TeacherGrid({
         {teachers.map((teacher, index) => (
           <article
             key={`teacher-${index}`}
-            className="group overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 transition hover:-translate-y-0.5 hover:border-emerald-200 hover:bg-white hover:shadow-lg hover:shadow-emerald-950/5"
+            className="group overflow-hidden rounded-3xl border border-slate-200 bg-slate-50 transition-colors hover:border-emerald-200 hover:bg-white hover:shadow-lg hover:shadow-emerald-950/5"
           >
             <div className="flex gap-4 p-4">
               <TeacherAvatar
                 teacher={teacher}
-                hasTeachers={hasTeachers}
                 className="h-20 w-20 rounded-[24px] ring-1 ring-slate-200"
               />
               <div className="min-w-0 flex-1">
@@ -543,13 +555,13 @@ function TeacherGrid({
                   </h4>
                   {index === 0 && (
                     <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[11px] font-black text-orange-700">
-                      Lead
+                      Үндсэн багш
                     </span>
                   )}
                 </div>
                 <p className="mt-2 break-words text-sm font-semibold leading-7 text-slate-600">
                   {teacher.description ||
-                    "Багшийн зураг, нэр болон товч танилцуулгыг admin дээрээс нэмнэ."}
+                    "Багшийн танилцуулга удахгүй нэмэгдэнэ."}
                 </p>
               </div>
             </div>

@@ -1,342 +1,244 @@
 "use client";
 
-import {
-  ArrowRight,
-  BookOpenCheck,
-  CalendarDays,
-  GraduationCap,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
+import { useState } from "react";
+import { GraduationCap, Search, SlidersHorizontal, X } from "lucide-react";
 import type { ProjectItem } from "@/components/molecules/projects/project-types";
 import { StudyMaterialCard } from "./StudyMaterialCards";
-import type { StudySettings } from "./study-utils";
+import { parseTeacherItems, type StudySettings } from "./study-utils";
 
 type StudySectionsProps = {
-  activeCategory: string;
-  activeCategoryMaterials: ProjectItem[];
-  allCategoryLabel: string;
-  categoryTabs: string[];
   displayMaterials: ProjectItem[];
-  featuredMaterials: ProjectItem[];
   loading: boolean;
+  error: string;
   openingId: string | null;
   settings: StudySettings;
-  showAllCourses: boolean;
-  visibleCategoryMaterials: ProjectItem[];
   onOpenMaterial: (material: ProjectItem, ticketOptionId?: string) => void;
-  onSelectCategory: (category: string) => void;
-  onToggleShowAllCourses: () => void;
+  onRetry: () => void;
 };
 
-function StudySectionHeader({
-  eyebrow,
-  title,
-  description,
-  count,
-}: {
-  eyebrow?: string;
-  title: string;
-  description: string;
-  count?: number;
-}) {
-  return (
-    <div className="mb-4 flex flex-wrap items-end justify-between gap-3 sm:mb-6 sm:gap-4">
-      <div>
-        {eyebrow && (
-          <p className="text-[11px] font-black uppercase tracking-[0.22em] text-cyan-700 sm:text-xs">
-            {eyebrow}
-          </p>
-        )}
-        <h2 className="mt-1.5 text-2xl font-black tracking-tight text-[#111827] sm:mt-2 sm:text-4xl">
-          {title}
-        </h2>
-        <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-500 sm:mt-3 sm:text-base sm:leading-7">
-          {description}
-        </p>
-      </div>
-      {typeof count === "number" && (
-        <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-slate-600 shadow-sm">
-          {count}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function StudyHero({
-  displayMaterials,
-  settings,
-}: Pick<StudySectionsProps, "displayMaterials" | "settings">) {
-  const upcomingCount = displayMaterials.filter(
-    (material) => material.courseDate || material.courseTime,
-  ).length;
-  const freeCount = displayMaterials.filter(
-    (material) => !material.price || material.price <= 0,
-  ).length;
-
-  return (
-    <section className="mb-5 overflow-hidden rounded-[28px] border border-slate-200 bg-[linear-gradient(135deg,#0f172a,#1f2937_52%,#ea580c)] text-white shadow-[0_18px_50px_rgba(15,23,42,0.18)] sm:mb-8">
-      <div className="px-5 py-6 sm:px-7 sm:py-8 lg:px-9">
-        <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.18em] text-orange-100 ring-1 ring-white/15">
-          <Sparkles className="h-3.5 w-3.5" />
-          {settings.eyebrow}
-        </div>
-        <h1 className="mt-4 max-w-3xl text-3xl font-black leading-[1.05] tracking-tight sm:text-5xl">
-          {settings.title}{" "}
-          <span className="text-orange-300">{settings.accentTitle}</span>
-        </h1>
-        <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-white/72 sm:text-base sm:leading-7">
-          {settings.description}
-        </p>
-        <div className="mt-5 grid grid-cols-3 gap-2 sm:max-w-xl sm:gap-3">
-          <div className="rounded-2xl bg-white/10 px-3 py-3 ring-1 ring-white/10">
-            <BookOpenCheck className="mb-2 h-4 w-4 text-orange-200" />
-            <p className="text-lg font-black">{displayMaterials.length}</p>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-white/55">
-              {settings.countLabel}
-            </p>
-          </div>
-          <div className="rounded-2xl bg-white/10 px-3 py-3 ring-1 ring-white/10">
-            <ShieldCheck className="mb-2 h-4 w-4 text-emerald-200" />
-            <p className="text-lg font-black">{freeCount}</p>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-white/55">
-              Үнэгүй
-            </p>
-          </div>
-          <div className="rounded-2xl bg-white/10 px-3 py-3 ring-1 ring-white/10">
-            <CalendarDays className="mb-2 h-4 w-4 text-cyan-200" />
-            <p className="text-lg font-black">{upcomingCount}</p>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-white/55">
-              Хуваарь
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function StudyFeaturedSection({
-  featuredMaterials,
-  openingId,
-  onOpenMaterial,
-}: Pick<
-  StudySectionsProps,
-  "featuredMaterials" | "openingId" | "onOpenMaterial"
->) {
-  if (featuredMaterials.length === 0) return null;
-
-  return (
-    <section className="mb-8 sm:mb-10">
-      <StudySectionHeader
-        title="Онцлох сургалтууд"
-        description="Сүүлд нэмэгдсэн, хамгийн түрүүнд үзэх сургалтууд"
-      />
-      <div
-        className={
-          featuredMaterials.length > 1
-            ? "flex flex-wrap gap-5"
-            : "max-w-[300px]"
-        }
-      >
-        {featuredMaterials.slice(0, 2).map((material, index) => (
-          <StudyMaterialCard
-            key={material.id}
-            material={material}
-            index={index}
-            openingId={openingId}
-            onOpen={onOpenMaterial}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function StudyLoadingGrid() {
-  return (
-    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-      {Array.from({ length: 3 }).map((_, index) => (
-        <div
-          key={index}
-          className="h-[220px] animate-pulse rounded-2xl border border-slate-200 bg-slate-100 sm:h-[392px]"
-        />
-      ))}
-    </div>
-  );
-}
-
-function StudyEmptyState({ emptyText }: { emptyText: string }) {
-  return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-14 text-center shadow-sm">
-      <GraduationCap className="mx-auto h-12 w-12 text-emerald-500" />
-      <p className="mt-5 text-lg font-bold text-slate-500">{emptyText}</p>
-    </div>
-  );
-}
-
-function StudyCategoryTabs({
-  activeCategory,
-  categoryTabs,
-  onSelectCategory,
-}: Pick<
-  StudySectionsProps,
-  "activeCategory" | "categoryTabs" | "onSelectCategory"
->) {
-  return (
-    <div className="mb-5 overflow-x-auto pb-1 sm:mb-7">
-      <div className="flex min-w-max gap-2">
-        {categoryTabs.map((category) => {
-          const active = category === activeCategory;
-          return (
-            <button
-              key={category}
-              type="button"
-              onClick={() => onSelectCategory(category)}
-              className={`relative shrink-0 rounded-full border px-3 py-2 text-xs font-black transition sm:px-4 sm:text-sm ${
-                active
-                  ? "border-slate-950 bg-slate-950 text-white"
-                  : "border-slate-200 bg-white text-slate-500 hover:border-orange-200 hover:text-orange-600"
-              }`}
-            >
-              {category}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function StudyTrainingListSection({
-  activeCategory,
-  activeCategoryMaterials,
-  allCategoryLabel,
-  categoryTabs,
-  openingId,
-  settings,
-  showAllCourses,
-  visibleCategoryMaterials,
-  onOpenMaterial,
-  onSelectCategory,
-  onToggleShowAllCourses,
-}: Omit<
-  StudySectionsProps,
-  "displayMaterials" | "featuredMaterials" | "loading"
->) {
-  return (
-    <section className="pt-1">
-      <StudySectionHeader
-        eyebrow={settings.listEyebrow}
-        title={settings.listTitle || "Бүртгүүлэх сургалтууд"}
-        description="MGL Store-ийн сургалтуудыг чиглэлээр нь сонгоод хэрэгтэй хөтөлбөрөө хурдан олоорой."
-        count={activeCategoryMaterials.length}
-      />
-
-      <StudyCategoryTabs
-        activeCategory={activeCategory}
-        categoryTabs={categoryTabs}
-        onSelectCategory={onSelectCategory}
-      />
-
-      {showAllCourses ? (
-        <div
-          className={
-            activeCategoryMaterials.length > 1
-              ? "flex flex-wrap gap-5"
-              : "max-w-[300px]"
-          }
-        >
-          {activeCategoryMaterials.map((material, index) => (
-            <StudyMaterialCard
-              key={material.id}
-              material={material}
-              index={index}
-              openingId={openingId}
-              onOpen={onOpenMaterial}
-            />
-          ))}
-        </div>
-      ) : (
-        <div
-          className={
-            visibleCategoryMaterials.length > 1
-              ? "flex flex-wrap gap-5"
-              : "max-w-[300px]"
-          }
-        >
-          {visibleCategoryMaterials.map((material, index) => (
-            <StudyMaterialCard
-              key={material.id}
-              material={material}
-              index={index}
-              openingId={openingId}
-              onOpen={onOpenMaterial}
-            />
-          ))}
-        </div>
-      )}
-
-      <button
-        type="button"
-        onClick={onToggleShowAllCourses}
-        className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-orange-50 px-4 text-sm font-black text-orange-600 transition hover:bg-orange-100 hover:text-orange-700 sm:mt-9 sm:text-base"
-      >
-        {showAllCourses
-          ? "Онцлох grid рүү буцах"
-          : activeCategory === allCategoryLabel
-            ? `Бүх ${settings.countLabel} харах`
-            : `${activeCategory} чиглэлийн бүх сургалтыг харах`}
-        <ArrowRight className="h-5 w-5" />
-      </button>
-    </section>
-  );
-}
-
 export function StudySections({
-  activeCategory,
-  activeCategoryMaterials,
-  allCategoryLabel,
-  categoryTabs,
   displayMaterials,
-  featuredMaterials,
   loading,
+  error,
   openingId,
   settings,
-  showAllCourses,
-  visibleCategoryMaterials,
   onOpenMaterial,
-  onSelectCategory,
-  onToggleShowAllCourses,
+  onRetry,
 }: StudySectionsProps) {
-  if (loading) return <StudyLoadingGrid />;
-
-  if (displayMaterials.length === 0) {
-    return <StudyEmptyState emptyText={settings.emptyText} />;
-  }
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("");
+  const [teacher, setTeacher] = useState("");
+  const categories = Array.from(
+    new Set(displayMaterials.map((item) => item.category || "Сургалт")),
+  );
+  const teachers = Array.from(
+    new Set(
+      displayMaterials.flatMap((item) =>
+        parseTeacherItems(item).map((person) => person.name),
+      ),
+    ),
+  );
+  const search = query.trim().toLocaleLowerCase("mn-MN");
+  const filtered = displayMaterials.filter((item) => {
+    const people = parseTeacherItems(item);
+    return (
+      (!category || (item.category || "Сургалт") === category) &&
+      (!teacher || people.some((person) => person.name === teacher)) &&
+      (!search ||
+        [
+          item.title,
+          item.summary,
+          item.category,
+          item.location,
+          item.address,
+          ...people.map((person) => person.name),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase("mn-MN")
+          .includes(search))
+    );
+  });
+  const hasFilters = Boolean(query || category || teacher);
+  const reset = () => {
+    setQuery("");
+    setCategory("");
+    setTeacher("");
+  };
 
   return (
     <>
-      <StudyHero displayMaterials={displayMaterials} settings={settings} />
-      <StudyFeaturedSection
-        featuredMaterials={featuredMaterials}
-        openingId={openingId}
-        onOpenMaterial={onOpenMaterial}
-      />
-      <StudyTrainingListSection
-        activeCategory={activeCategory}
-        activeCategoryMaterials={activeCategoryMaterials}
-        allCategoryLabel={allCategoryLabel}
-        categoryTabs={categoryTabs}
-        openingId={openingId}
-        settings={settings}
-        showAllCourses={showAllCourses}
-        visibleCategoryMaterials={visibleCategoryMaterials}
-        onOpenMaterial={onOpenMaterial}
-        onSelectCategory={onSelectCategory}
-        onToggleShowAllCourses={onToggleShowAllCourses}
-      />
+      <header className="mb-6 border-b border-slate-200 pb-6 sm:mb-8">
+        <p className="flex items-center gap-2 text-sm font-semibold text-sky-700">
+          <GraduationCap className="h-5 w-5" aria-hidden="true" />
+          Сургалт · Зөвлөгөө
+        </p>
+        <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
+          {settings.title}{" "}
+          <span className="text-sky-700">{settings.accentTitle}</span>
+        </h1>
+        <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+          {settings.description}
+        </p>
+      </header>
+
+      <section
+        aria-label="Сургалт хайх, шүүх"
+        className="mb-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
+      >
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_240px]">
+          <div>
+            <label
+              htmlFor="study-search"
+              className="mb-2 block text-sm font-semibold text-slate-700"
+            >
+              Сургалт хайх
+            </label>
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-slate-400"
+                aria-hidden="true"
+              />
+              <input
+                id="study-search"
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Сургалт, багш, байршил…"
+                className="h-12 w-full rounded-xl border border-slate-300 bg-slate-50 pl-10 pr-3 text-base outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-100"
+              />
+            </div>
+          </div>
+          <div>
+            <label
+              htmlFor="study-teacher"
+              className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700"
+            >
+              <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+              Багшаар шүүх
+            </label>
+            <select
+              id="study-teacher"
+              value={teacher}
+              onChange={(event) => setTeacher(event.target.value)}
+              className="h-12 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 text-base outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-100"
+            >
+              <option value="">Бүх багш</option>
+              {teachers.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div
+          className="flex gap-2 overflow-x-auto pb-2"
+          aria-label="Сургалтын чиглэл"
+        >
+          {["", ...categories].map((name) => (
+            <button
+              key={name}
+              type="button"
+              aria-pressed={category === name}
+              onClick={() => setCategory(name)}
+              className={`min-h-11 shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${category === name ? "border-sky-700 bg-sky-700 text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}
+            >
+              {name || "Бүгд"}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section aria-labelledby="study-results-heading" aria-busy={loading}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2
+            id="study-results-heading"
+            className="text-xl font-bold text-slate-950"
+          >
+            {settings.listTitle || "Сургалтууд"}
+          </h2>
+          <div className="flex items-center gap-3">
+            <p role="status" className="text-sm text-slate-600">
+              {loading
+                ? "Уншиж байна…"
+                : error
+                  ? "Мэдээлэл ачаалагдсангүй"
+                  : `${filtered.length} сургалт`}
+            </p>
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={reset}
+                className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-sky-700 underline-offset-4 hover:underline"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+                Цэвэрлэх
+              </button>
+            )}
+          </div>
+        </div>
+        {loading ? (
+          <div
+            className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+            aria-hidden="true"
+          >
+            {[0, 1, 2].map((key) => (
+              <div
+                key={key}
+                className="h-96 animate-pulse rounded-2xl border border-slate-200 bg-slate-100 motion-reduce:animate-none"
+              />
+            ))}
+          </div>
+        ) : error ? (
+          <div
+            role="alert"
+            className="rounded-2xl border border-slate-200 bg-white p-8 text-center"
+          >
+            <p className="text-slate-700">{error}</p>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-4 min-h-11 rounded-xl bg-sky-700 px-5 font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+            >
+              Дахин оролдох
+            </button>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center">
+            <GraduationCap
+              className="mx-auto h-10 w-10 text-slate-400"
+              aria-hidden="true"
+            />
+            <p className="mt-4 font-semibold text-slate-700">
+              {hasFilters
+                ? "Хайлтад тохирох сургалт олдсонгүй"
+                : settings.emptyText}
+            </p>
+            {hasFilters && (
+              <button
+                type="button"
+                onClick={reset}
+                className="mt-3 min-h-11 text-sm font-semibold text-sky-700"
+              >
+                Бүх сургалтыг харах
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {filtered.map((material, index) => (
+              <StudyMaterialCard
+                key={material.id}
+                material={material}
+                index={index}
+                openingId={openingId}
+                onOpen={onOpenMaterial}
+              />
+            ))}
+          </div>
+        )}
+      </section>
     </>
   );
 }

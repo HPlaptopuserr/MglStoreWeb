@@ -13,13 +13,11 @@ import { StudyCourseModal } from "./_components/StudyCourseModal";
 import { StudySections } from "./_components/StudySections";
 import {
   DEFAULT_STUDY_SETTINGS,
-  buildFeaturedStudyMaterials,
   buildStudyDisplayMaterials,
+  buildFeaturedStudyMaterials,
   normalizeStudySettings,
   type StudySettings,
 } from "./_components/study-utils";
-
-const ALL_STUDY_CATEGORIES = "Бүгд";
 
 export default function StudyPage() {
   const router = useRouter();
@@ -45,44 +43,30 @@ export default function StudyPage() {
   );
   const [paymentSession, setPaymentSession] =
     useState<PaidAccessPaymentSession | null>(null);
-  const [activeCategory, setActiveCategory] = useState(ALL_STUDY_CATEGORIES);
-  const [showAllCourses, setShowAllCourses] = useState(false);
-  const displayMaterials = !loading
-    ? buildStudyDisplayMaterials(materials)
-    : materials;
-  const featuredMaterials = buildFeaturedStudyMaterials(displayMaterials);
-  const categoryNames = Array.from(
-    new Set(
-      displayMaterials
-        .map((material) => material.category || "Сургалт")
-        .filter(Boolean),
+  const [loadError, setLoadError] = useState("");
+  const [retryKey, setRetryKey] = useState(0);
+  const orderedMaterials = buildStudyDisplayMaterials(materials);
+  const featuredIds = buildFeaturedStudyMaterials(orderedMaterials).map(
+    (material) => material.id,
+  );
+  const displayMaterials = [
+    ...featuredIds.flatMap((id) =>
+      orderedMaterials.filter((material) => material.id === id),
     ),
-  ).slice(0, 8);
-  const categoryTabs = [ALL_STUDY_CATEGORIES, ...categoryNames];
-  const activeCategoryMaterials =
-    activeCategory === ALL_STUDY_CATEGORIES
-      ? displayMaterials
-      : displayMaterials.filter(
-          (material) => (material.category || "Сургалт") === activeCategory,
-        );
-  const visibleCategoryMaterials = activeCategoryMaterials.slice(0, 4);
-
-  useEffect(() => {
-    if (
-      activeCategory !== ALL_STUDY_CATEGORIES &&
-      !categoryNames.includes(activeCategory)
-    ) {
-      setActiveCategory(ALL_STUDY_CATEGORIES);
-    }
-  }, [activeCategory, categoryNames]);
+    ...orderedMaterials.filter(
+      (material) => !featuredIds.includes(material.id),
+    ),
+  ];
 
   useEffect(() => {
     const fetchMaterials = async () => {
+      setLoading(true);
+      setLoadError("");
       try {
         const res = await fetch(`${API}/site-settings/study`, {
           cache: "no-store",
         });
-        if (!res.ok) return;
+        if (!res.ok) throw new Error("Сургалтын мэдээлэл ачаалагдсангүй");
         const data = await res.json();
         const parsed = Array.isArray(data.projects) ? data.projects : [];
         setSettings(normalizeStudySettings(data.settings));
@@ -92,13 +76,14 @@ export default function StudyPage() {
         setMaterials(visibleMaterials);
       } catch (error) {
         console.error("Failed to fetch study materials", error);
+        setLoadError("Сургалтын мэдээлэл ачаалагдсангүй. Дахин оролдоно уу.");
         setMaterials([]);
       } finally {
         setLoading(false);
       }
     };
     fetchMaterials();
-  }, []);
+  }, [retryKey]);
 
   const fetchStudyDetail = async (materialId: string, invoiceId?: string) => {
     const params = invoiceId
@@ -171,6 +156,7 @@ export default function StudyPage() {
         return;
       }
 
+      setActiveTicketOptionId(ticketOptionId || "");
       setPaymentMaterial(material);
       setPaymentSession({
         invoiceId: data.invoiceId,
@@ -194,29 +180,17 @@ export default function StudyPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-slate-950">
+    <div className="min-h-screen bg-slate-50 text-slate-950">
       <main>
-        <div className="mx-auto max-w-7xl px-4 pb-10 pt-3 sm:px-6 lg:px-8 lg:pb-12 lg:pt-6">
+        <div className="mx-auto max-w-7xl px-4 pb-24 pt-5 sm:px-6 lg:px-8 lg:pb-12 lg:pt-6">
           <StudySections
-            activeCategory={activeCategory}
-            activeCategoryMaterials={activeCategoryMaterials}
-            allCategoryLabel={ALL_STUDY_CATEGORIES}
-            categoryTabs={categoryTabs}
             displayMaterials={displayMaterials}
-            featuredMaterials={featuredMaterials}
             loading={loading}
+            error={loadError}
             openingId={openingId}
             settings={settings}
-            showAllCourses={showAllCourses}
-            visibleCategoryMaterials={visibleCategoryMaterials}
             onOpenMaterial={openStudyMaterial}
-            onSelectCategory={(category) => {
-              setActiveCategory(category);
-              setShowAllCourses(false);
-            }}
-            onToggleShowAllCourses={() =>
-              setShowAllCourses((current) => !current)
-            }
+            onRetry={() => setRetryKey((current) => current + 1)}
           />
         </div>
       </main>
@@ -238,8 +212,9 @@ export default function StudyPage() {
         />
       )}
 
-      {activeMaterial && (
+      {activeMaterial && !(paymentMaterial && paymentSession) && (
         <StudyCourseModal
+          key={`${activeMaterial.id}:${activeTicketOptionId}`}
           material={activeMaterial}
           initialTicketOptionId={activeTicketOptionId}
           registered={Boolean(registeredMaterialIds[activeMaterial.id])}
