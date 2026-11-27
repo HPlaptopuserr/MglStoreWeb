@@ -1,3 +1,4 @@
+import { mentorMeetings } from "./mentor-meeting";
 import { protectClubFormMutation } from "./mgl-club-access";
 import { Router, type Router as ExpressRouter, type Request } from "express";
 import { prisma } from "@mgl/database";
@@ -13,6 +14,7 @@ import { createCommunityEditRouter } from "./community-2003-edit.routes";
 import mglClubRouter from "./mgl-club.routes";
 
 const router: ExpressRouter = Router();
+router.use(mentorMeetings);
 router.use(mglClubRouter);
 router.use(createCommunityEditRouter());
 router.use(createCommunityPhotoRouter());

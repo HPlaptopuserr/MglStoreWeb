@@ -3,6 +3,7 @@
 import { useStudyNavigation, useStoreWebView } from "@/lib/use-store-webview";
 import { useState } from "react";
 import {
+  ContactRound,
   GraduationCap,
   Users,
   LayoutGrid,
@@ -11,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import type { ProjectItem } from "@/components/molecules/projects/project-types";
+import { StudyMentor } from "./StudyMentor";
 import { StudyMaterialCard } from "./StudyMaterialCards";
 import { parseTeacherItems, type StudySettings } from "./study-utils";
 
@@ -18,6 +20,7 @@ const destinations = [
   { id: "courses", label: "Сургалт", icon: GraduationCap },
   { id: "teachers", label: "Багш нар", icon: Users },
   { id: "categories", label: "Чиглэл", icon: LayoutGrid },
+  { id: "mentor", label: "Mentor", icon: ContactRound },
 ] as const;
 type StudyTab = (typeof destinations)[number]["id"];
 
@@ -141,7 +144,7 @@ export function StudySections({
         </p>
       </header>
 
-      {(!studyNavigation || tab !== "courses") && (
+      {(!studyNavigation || tab === "teachers" || tab === "categories") && (
         <section
           aria-label="Сургалт хайх, шүүх"
           className="mb-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
@@ -198,95 +201,99 @@ export function StudySections({
         </section>
       )}
 
-      <section aria-labelledby="study-results-heading" aria-busy={loading}>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2
-            id="study-results-heading"
-            className="text-xl font-bold text-slate-950"
-          >
-            {settings.listTitle || "Сургалтууд"}
-          </h2>
-          <div className="flex items-center gap-3">
-            <p role="status" className="text-sm text-slate-600">
-              {loading
-                ? "Уншиж байна…"
-                : error
-                  ? "Мэдээлэл ачаалагдсангүй"
-                  : `${filtered.length} сургалт`}
-            </p>
-            {hasFilters && (
-              <button
-                type="button"
-                onClick={reset}
-                className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-sky-700 underline-offset-4 hover:underline"
-              >
-                <X className="h-4 w-4" aria-hidden="true" />
-                Цэвэрлэх
-              </button>
-            )}
-          </div>
-        </div>
-        {loading ? (
-          <div
-            className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
-            aria-hidden="true"
-          >
-            {[0, 1, 2].map((key) => (
-              <div
-                key={key}
-                className="h-96 animate-pulse rounded-2xl border border-slate-200 bg-slate-100 motion-reduce:animate-none"
-              />
-            ))}
-          </div>
-        ) : error ? (
-          <div
-            role="alert"
-            className="rounded-2xl border border-slate-200 bg-white p-8 text-center"
-          >
-            <p className="text-slate-700">{error}</p>
-            <button
-              type="button"
-              onClick={onRetry}
-              className="mt-4 min-h-11 rounded-xl bg-sky-700 px-5 font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+      {studyNavigation && tab === "mentor" ? (
+        <StudyMentor bio={settings.mentorBio} photo={settings.mentorPhoto} />
+      ) : (
+        <section aria-labelledby="study-results-heading" aria-busy={loading}>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2
+              id="study-results-heading"
+              className="text-xl font-bold text-slate-950"
             >
-              Дахин оролдох
-            </button>
+              {settings.listTitle || "Сургалтууд"}
+            </h2>
+            <div className="flex items-center gap-3">
+              <p role="status" className="text-sm text-slate-600">
+                {loading
+                  ? "Уншиж байна…"
+                  : error
+                    ? "Мэдээлэл ачаалагдсангүй"
+                    : `${filtered.length} сургалт`}
+              </p>
+              {hasFilters && (
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="inline-flex min-h-11 items-center gap-1 text-sm font-semibold text-sky-700 underline-offset-4 hover:underline"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                  Цэвэрлэх
+                </button>
+              )}
+            </div>
           </div>
-        ) : filtered.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center">
-            <GraduationCap
-              className="mx-auto h-10 w-10 text-slate-400"
+          {loading ? (
+            <div
+              className="grid gap-4 md:grid-cols-2 xl:grid-cols-3"
               aria-hidden="true"
-            />
-            <p className="mt-4 font-semibold text-slate-700">
-              {hasFilters
-                ? "Хайлтад тохирох сургалт олдсонгүй"
-                : settings.emptyText}
-            </p>
-            {hasFilters && (
+            >
+              {[0, 1, 2].map((key) => (
+                <div
+                  key={key}
+                  className="h-96 animate-pulse rounded-2xl border border-slate-200 bg-slate-100 motion-reduce:animate-none"
+                />
+              ))}
+            </div>
+          ) : error ? (
+            <div
+              role="alert"
+              className="rounded-2xl border border-slate-200 bg-white p-8 text-center"
+            >
+              <p className="text-slate-700">{error}</p>
               <button
                 type="button"
-                onClick={reset}
-                className="mt-3 min-h-11 text-sm font-semibold text-sky-700"
+                onClick={onRetry}
+                className="mt-4 min-h-11 rounded-xl bg-sky-700 px-5 font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
               >
-                Бүх сургалтыг харах
+                Дахин оролдох
               </button>
-            )}
-          </div>
-        ) : (
-          <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {filtered.map((material, index) => (
-              <StudyMaterialCard
-                key={material.id}
-                material={material}
-                index={index}
-                openingId={openingId}
-                onOpen={onOpenMaterial}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center">
+              <GraduationCap
+                className="mx-auto h-10 w-10 text-slate-400"
+                aria-hidden="true"
               />
-            ))}
-          </div>
-        )}
-      </section>
+              <p className="mt-4 font-semibold text-slate-700">
+                {hasFilters
+                  ? "Хайлтад тохирох сургалт олдсонгүй"
+                  : settings.emptyText}
+              </p>
+              {hasFilters && (
+                <button
+                  type="button"
+                  onClick={reset}
+                  className="mt-3 min-h-11 text-sm font-semibold text-sky-700"
+                >
+                  Бүх сургалтыг харах
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {filtered.map((material, index) => (
+                <StudyMaterialCard
+                  key={material.id}
+                  material={material}
+                  index={index}
+                  openingId={openingId}
+                  onOpen={onOpenMaterial}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
       {studyNavigation && (
         <nav
           aria-label="Сургалт зөвлөгөөний цэс"

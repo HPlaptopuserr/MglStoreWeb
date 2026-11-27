@@ -25,6 +25,8 @@ const DEFAULT_SURVEY_SETTINGS: SurveySectionSettings = {
 };
 
 const DEFAULT_STUDY_SETTINGS: StudySectionSettings = {
+  mentorBio: "MGL CLUB-ийн үүсгэн байгуулагч. 2003 оноос бизнес эрхэлж, жижиг, дунд бизнесийн хамтын ажиллагааг дэмжиж ирсэн. 2013 онд «Эх орон» телевизэд сэтгүүлчээр ажиллаж байв.",
+  mentorPhoto: "/mgl-club/mentor-yesuntumur.jpg",
   eyebrow: "Training access",
   title: "Сургалт",
   accentTitle: "бүртгэл",
@@ -172,6 +174,8 @@ function normalizeStudySettings(raw: unknown): StudySectionSettings {
     return text;
   };
   return {
+    mentorBio: String(record.mentorBio ?? DEFAULT_STUDY_SETTINGS.mentorBio).trim(),
+    mentorPhoto: String(record.mentorPhoto ?? DEFAULT_STUDY_SETTINGS.mentorPhoto).trim(),
     eyebrow: clean(record.eyebrow, DEFAULT_STUDY_SETTINGS.eyebrow),
     title: clean(record.title, DEFAULT_STUDY_SETTINGS.title),
     accentTitle: clean(record.accentTitle, DEFAULT_STUDY_SETTINGS.accentTitle),

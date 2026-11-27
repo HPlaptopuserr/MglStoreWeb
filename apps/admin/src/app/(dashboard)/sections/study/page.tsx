@@ -403,6 +403,43 @@ export default function StudySectionPage() {
             </div>
           </div>
         </section>
+        <section className="mb-5 space-y-4 rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="text-xl font-bold">Mentor · В. Есөнтөмөр</h2>
+          <label className="block text-sm font-semibold">
+            Багшийн танилцуулга
+            <textarea
+              value={studySettings.mentorBio}
+              onChange={(event) =>
+                setStudySettings((prev) => ({
+                  ...prev,
+                  mentorBio: event.target.value,
+                }))
+              }
+              rows={4}
+              className="mt-1 block w-full rounded-lg border p-3"
+            />
+          </label>
+          <label className="block text-sm font-semibold">
+            Нэрийн хуудасны зургийн URL
+            <input
+              type="url"
+              value={studySettings.mentorPhoto}
+              onChange={(event) =>
+                setStudySettings((prev) => ({
+                  ...prev,
+                  mentorPhoto: event.target.value,
+                }))
+              }
+              className="mt-1 block w-full rounded-lg border p-3"
+            />
+          </label>
+          <a
+            className="inline-block text-sm font-semibold text-sky-700 underline"
+            href="/sections/forms"
+          >
+            Уулзалтын хүсэлтүүд · Маягтын хариулт
+          </a>
+        </section>
         <StudyBannerEditor
           settings={studySettings}
           setSettings={setStudySettings}

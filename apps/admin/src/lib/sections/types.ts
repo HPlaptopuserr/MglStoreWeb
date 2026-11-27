@@ -167,6 +167,8 @@ export interface ProjectPaymentAccount {
 }
 
 export interface StudySectionSettings {
+  mentorBio: string;
+  mentorPhoto: string;
   eyebrow: string;
   title: string;
   accentTitle: string;
