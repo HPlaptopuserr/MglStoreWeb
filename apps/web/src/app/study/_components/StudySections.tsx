@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import type { ProjectItem } from "@/components/molecules/projects/project-types";
+import { StudyTeachers } from "./StudyTeachers";
 import { StudyMentor } from "./StudyMentor";
 import { StudyMaterialCard } from "./StudyMaterialCards";
 import { parseTeacherItems, type StudySettings } from "./study-utils";
@@ -45,6 +46,7 @@ export function StudySections({
 }: StudySectionsProps) {
   const studyNavigation = useStudyNavigation();
   const [tab, setTab] = useState<StudyTab>("courses");
+  const teachersTab = studyNavigation && tab === "teachers";
   const embedded = useStoreWebView();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
@@ -144,12 +146,12 @@ export function StudySections({
         </p>
       </header>
 
-      {(!studyNavigation || tab === "teachers" || tab === "categories") && (
+      {(!studyNavigation || tab === "categories") && (
         <section
           aria-label="Сургалт хайх, шүүх"
           className="mb-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
         >
-          {(!studyNavigation || tab === "teachers") && (
+          {!studyNavigation && (
             <div
               className={
                 embedded ? "" : "grid gap-3 sm:grid-cols-[minmax(0,1fr)_240px]"
@@ -210,7 +212,7 @@ export function StudySections({
               id="study-results-heading"
               className="text-xl font-bold text-slate-950"
             >
-              {settings.listTitle || "Сургалтууд"}
+              {teachersTab ? "Багш нар" : settings.listTitle || "Сургалтууд"}
             </h2>
             <div className="flex items-center gap-3">
               <p role="status" className="text-sm text-slate-600">
@@ -218,7 +220,9 @@ export function StudySections({
                   ? "Уншиж байна…"
                   : error
                     ? "Мэдээлэл ачаалагдсангүй"
-                    : `${filtered.length} сургалт`}
+                    : teachersTab
+                      ? ""
+                      : `${filtered.length} сургалт`}
               </p>
               {hasFilters && (
                 <button
@@ -258,6 +262,17 @@ export function StudySections({
                 Дахин оролдох
               </button>
             </div>
+          ) : teachersTab ? (
+            <StudyTeachers
+              materials={displayMaterials}
+              settings={settings}
+              openingId={openingId}
+              onOpen={onOpenMaterial}
+              onMentor={() => {
+                setTab("mentor");
+                window.scrollTo(0, 0);
+              }}
+            />
           ) : filtered.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center">
               <GraduationCap
