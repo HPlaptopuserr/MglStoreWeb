@@ -72,6 +72,13 @@ export type CreateAdminUserInput = {
   role: string;
 };
 
+export type CreateUserInput = {
+  email: string;
+  fullName: string;
+  phone: string;
+  password: string;
+};
+
 export type UpdateMembershipOptions = {
   durationMonths?: number;
   expiresAt?: string;

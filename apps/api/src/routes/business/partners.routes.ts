@@ -2856,7 +2856,7 @@ router.post(
 
       const existingUser = await prisma.user.findUnique({
         where: { email: normalizedEmail },
-        select: { id: true, passwordHash: true },
+        select: { id: true, passwordHash: true, profile: { select: { userId: true } } },
       });
 
       let sameOrganizationMembershipId: string | null = null;
@@ -2937,21 +2937,10 @@ router.post(
                 select: { id: true, email: true, passwordHash: true },
               });
 
-          if (existingUser) {
-            await tx.profile.upsert({
-              where: { userId: user.id },
-              update: {
-                ...(phone !== undefined
-                  ? { phoneNumber: phone?.trim() || null }
-                  : {}),
-              },
-              create: {
-                userId: user.id,
-                fullName: fullName.trim(),
-                phoneNumber: phone?.trim() || null,
-              },
-            });
-          } else {
+          // A personal profile is shared across organizations. Granting another
+          // membership must not rewrite it or run the INSERT phone trigger via
+          // native upsert, which rejects the account's own reserved phone.
+          if (!existingUser?.profile) {
             await tx.profile.create({
               data: {
                 userId: user.id,
@@ -3024,7 +3013,7 @@ router.post(
       if (maybePrisma?.code === "P2002") {
         return res.status(409).json({
           message:
-            "Энэ email эсвэл хэрэглэгчийн холбоос аль хэдийн бүртгэлтэй байна. Өөр login email ашиглана уу.",
+            "Энэ утас эсвэл имэйл өөр хэрэглэгчид бүртгэлтэй, эсвэл энэ байгууллагын эрх аль хэдийн олгогдсон байна. Одоо байгаа personal account болон байгууллагын эрхийг шалгана уу.",
         });
       }
       const detail =

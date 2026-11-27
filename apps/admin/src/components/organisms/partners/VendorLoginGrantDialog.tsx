@@ -134,7 +134,7 @@ export function VendorLoginGrantDialog({
             onRoleChange={onRoleChange}
             disabledUserIds={disabledUserIds}
             title="Vendor login эрх шинээр олгох"
-            description="Personal account сонгож энэ байгууллагын page role онооно."
+            description="Нэг personal account олон байгууллагад owner эсвэл ажилтан байж болно. Энэ байгууллагын role-ийг сонгоно уу."
             badge={memberCount === 0 ? "First owner" : "Additional user"}
             autoFocus
           />

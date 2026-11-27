@@ -2,6 +2,7 @@ import { API, adminFetch } from "@/lib/api";
 import { EMPTY_USERS_SUMMARY } from "./constants";
 import type {
   CreateAdminUserInput,
+  CreateUserInput,
   SystemUser,
   UpdateMembershipOptions,
   UsersQuery,
@@ -106,6 +107,17 @@ export async function createAdminUser(input: CreateAdminUserInput) {
     body: JSON.stringify(input),
   });
   const data = (await res.json().catch(() => null)) as ApiErrorBody | null;
+  if (!res.ok) {
+    throw new Error(getErrorMessage(data, "Хэрэглэгч үүсгэхэд алдаа гарлаа"));
+  }
+}
+
+export async function createUser(input: CreateUserInput) {
+  const res = await adminFetch(`${API}/admin/users/manual`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  const data: unknown = await res.json().catch(() => null);
   if (!res.ok) {
     throw new Error(getErrorMessage(data, "Хэрэглэгч үүсгэхэд алдаа гарлаа"));
   }

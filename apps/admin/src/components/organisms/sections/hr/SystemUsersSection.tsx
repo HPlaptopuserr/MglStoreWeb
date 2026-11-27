@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Loader2, RefreshCw, UserPlus, Users, XCircle } from "lucide-react";
 import { useAdminAuth } from "@/lib/admin-auth";
 import { CreateAdminModal } from "./system-users/CreateAdminModal";
+import { CreateUserModal } from "./system-users/CreateUserModal";
 import { useSystemUsers } from "./system-users/useSystemUsers";
 import { UserCard } from "./system-users/UserCard";
 import { UsersFilters } from "./system-users/UsersFilters";
@@ -14,6 +15,8 @@ import type { UsersStatusFilter } from "./system-users/types";
 export function SystemUsersSection() {
   const { hasAnyPermission, isFullAdmin } = useAdminAuth();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCreateUserModal, setShowCreateUserModal] = useState(false);
+  const [createdMessage, setCreatedMessage] = useState("");
   const {
     users,
     totalUsers,
@@ -74,7 +77,20 @@ export function SystemUsersSection() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {(isFullAdmin || hasAnyPermission("MANAGE_USERS")) && (
+            <button
+              type="button"
+              onClick={() => {
+                setCreatedMessage("");
+                setShowCreateUserModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-violet-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-700"
+            >
+              <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
+              Шинэ хэрэглэгч
+            </button>
+          )}
           {canManageAdminStaff && (
             <button
               type="button"
@@ -104,6 +120,27 @@ export function SystemUsersSection() {
         onClose={() => setShowCreateModal(false)}
         onCreated={loadUsers}
       />
+
+      {showCreateUserModal && (
+        <CreateUserModal
+          onClose={() => setShowCreateUserModal(false)}
+          onCreated={() => {
+            setShowCreateUserModal(false);
+            setCreatedMessage(
+              "Хэрэглэгч амжилттай үүслээ. Утасны дугаар, нууц үгээр нэвтрэх боломжтой.",
+            );
+            loadUsers();
+          }}
+        />
+      )}
+      {createdMessage && (
+        <p
+          role="status"
+          className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700"
+        >
+          {createdMessage}
+        </p>
+      )}
 
       <UsersSummaryCards
         summary={summary}
