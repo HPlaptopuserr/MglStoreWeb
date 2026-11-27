@@ -3,7 +3,7 @@
 import { useStudyNavigation, useStoreWebView } from "@/lib/use-store-webview";
 import { useState } from "react";
 import {
-  ContactRound,
+  CircleUserRound,
   GraduationCap,
   Users,
   LayoutGrid,
@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import type { ProjectItem } from "@/components/molecules/projects/project-types";
 import { StudyTeachers } from "./StudyTeachers";
-import { StudyMentor } from "./StudyMentor";
+import { StudyProfile } from "./StudyProfile";
 import { StudyMaterialCard } from "./StudyMaterialCards";
 import { parseTeacherItems, type StudySettings } from "./study-utils";
 
@@ -21,7 +21,7 @@ const destinations = [
   { id: "courses", label: "Сургалт", icon: GraduationCap },
   { id: "teachers", label: "Багш нар", icon: Users },
   { id: "categories", label: "Чиглэл", icon: LayoutGrid },
-  { id: "mentor", label: "Mentor", icon: ContactRound },
+  { id: "profile", label: "Профайл", icon: CircleUserRound },
 ] as const;
 type StudyTab = (typeof destinations)[number]["id"];
 
@@ -203,8 +203,8 @@ export function StudySections({
         </section>
       )}
 
-      {studyNavigation && tab === "mentor" ? (
-        <StudyMentor bio={settings.mentorBio} photo={settings.mentorPhoto} />
+      {studyNavigation && tab === "profile" ? (
+        <StudyProfile />
       ) : (
         <section aria-labelledby="study-results-heading" aria-busy={loading}>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
