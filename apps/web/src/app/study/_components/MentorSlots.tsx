@@ -113,7 +113,7 @@ export function MentorSlots({ refresh }: { refresh: number }) {
         disabled={!ready || !result?.available.includes(selection)}
         className="min-h-12 rounded-xl bg-sky-700 px-4 font-semibold text-white disabled:opacity-50"
       >
-        Уулзалтын хүсэлт илгээх
+        1,000,000 ₮ төлж цаг авах
       </button>
     </fieldset>
   );

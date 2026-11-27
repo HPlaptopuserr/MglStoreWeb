@@ -9,6 +9,7 @@ import { organizationGroupRoutes } from "./routes/organization-groups";
 import { restrictKitchenMember } from "./middleware/kitchen-access";
 import { reconcileRetailPayments } from "./services/warehouse-retail.service";
 import { reconcilePendingMinuCards } from "./services/minu-card-reconciliation";
+import { processMentorBookings } from "./services/mentor-bookings";
 import { processWorkforceMailQueue } from "./services/workforce/mail-worker";
 import { workforceIntegrationRouter } from "./routes/workforce/integration.routes";
 import { workforceBillingPublicRouter } from "./routes/workforce/billing.routes";
@@ -332,6 +333,11 @@ const esimReconciliationTimer = setInterval(() => {
     });
 }, 15000);
 esimReconciliationTimer.unref();
+
+const mentorBookingTimer = setInterval(() => {
+  void processMentorBookings().catch(() => console.error("[mentor] booking worker unavailable"));
+}, 60_000);
+mentorBookingTimer.unref();
 
 const workforceMailTimer = setInterval(() => {
   void processWorkforceMailQueue();

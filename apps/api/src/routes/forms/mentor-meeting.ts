@@ -3,16 +3,56 @@ import { rateLimit } from "express-rate-limit";
 import { mentorSlotOpen, mentorSlots } from "@mgl/types";
 import { prisma } from "@mgl/database";
 
-const slug = "study-mentor-meeting";
+import {
+  mentorForm as slug,
+  slotId,
+  checkMentorPayment,
+  createMentorPayment,
+} from "../../services/mentor-bookings";
 const fields = [
   ["mentor", "Ментор"],
+  ["paymentStatus", "Төлбөрийн төлөв"],
+  ["amount", "Төлбөр (₮)"],
   ["name", "Нэр"],
   ["phone", "Утас"],
   ["requestedTime", "Хүссэн цаг (Улаанбаатар)"],
 ].map(([id, label]) => ({ id, label, type: "text", required: true }));
 
 export const mentorMeetings: Router = Router();
-const slotId = (time: string) => slug + "-" + time;
+const checkLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 120,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+});
+mentorMeetings.all(
+  [
+    "/forms/study-mentor-meeting/payment/check",
+    "/forms/study-mentor-meeting/payment/callback",
+  ],
+  checkLimit,
+  async (req, res) => {
+    const { invoiceId, projectId } = req.query;
+    if (
+      typeof invoiceId !== "string" ||
+      typeof projectId !== "string" ||
+      invoiceId.length !== 36 ||
+      projectId.length !== 16
+    )
+      return res.sendStatus(400);
+    res.set("Cache-Control", "no-store");
+    try {
+      const isPaid = await checkMentorPayment(projectId, invoiceId);
+      if (isPaid === null)
+        return res
+          .status(404)
+          .json({ message: "Нэхэмжлэлийн хугацаа дууссан байна." });
+      return res.json({ success: true, isPaid });
+    } catch {
+      return res.sendStatus(503);
+    }
+  },
+);
 mentorMeetings.get(
   "/forms/study-mentor-meeting/availability",
   async (req, res) => {
@@ -69,26 +109,19 @@ mentorMeetings.post(
     try {
       const form = await prisma.form.upsert({
         where: { slug },
-        update: {},
+        update: { fields },
         create: { slug, title: "В. Есөнтөмөр · Уулзалтын хүсэлт", fields },
       });
       if (!form.isActive)
         return res
           .status(410)
           .json({ message: "Уулзалтын хүсэлт түр хаалттай байна." });
-      await prisma.formResponse.create({
-        data: {
-          id: slotId(requestedTime),
-          formId: form.id,
-          data: {
-            mentor: "В. Есөнтөмөр",
-            name: name.trim(),
-            phone,
-            requestedTime,
-          },
-        },
+      const payment = await createMentorPayment(form.id, {
+        name: name.trim(),
+        phone,
+        requestedTime,
       });
-      return res.status(201).json({ success: true });
+      return res.status(201).json({ payment });
     } catch (error) {
       if (
         error &&
@@ -101,7 +134,9 @@ mentorMeetings.post(
           .json({ message: "Энэ цаг захиалагдсан байна. Өөр цаг сонгоно уу." });
       return res
         .status(500)
-        .json({ message: "Хүсэлт хадгалахад алдаа гарлаа." });
+        .json({
+          message: "Төлбөрийн нэхэмжлэл үүсгэж чадсангүй. Дахин оролдоно уу.",
+        });
     }
   },
 );

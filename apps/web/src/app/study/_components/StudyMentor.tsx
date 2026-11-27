@@ -1,6 +1,10 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  PaidAccessPaymentModal,
+  type PaidAccessPaymentSession,
+} from "@/components/molecules/payments/PaidAccessPaymentModal";
 import { MentorSlots } from "./MentorSlots";
 import { CalendarDays } from "lucide-react";
 import { API } from "@/lib/api";
@@ -10,6 +14,34 @@ export function StudyMentor({ bio, photo }: { bio: string; photo: string }) {
   const [status, setStatus] = useState<"idle" | "sending" | "sent">("idle");
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState("");
+  type Checkout = { time: string; payment: PaidAccessPaymentSession };
+  const [checkout, setCheckout] = useState<Checkout | null>(null);
+  const [showPayment, setShowPayment] = useState(false);
+  const storageKey = "study-mentor-payment";
+  useEffect(() => {
+    try {
+      const saved: Checkout | null = JSON.parse(
+        sessionStorage.getItem(storageKey) || "null",
+      );
+      if (
+        saved?.time &&
+        saved.payment?.invoiceId &&
+        Date.parse(saved.payment.expiresAt || "") > Date.now()
+      ) {
+        setCheckout(saved);
+      }
+    } catch {
+      /* Private browsing can disable session storage. */
+    }
+  }, []);
+  const paid = useCallback(async () => {
+    setShowPayment(false);
+    setCheckout(null);
+    setStatus("sent");
+    try {
+      sessionStorage.removeItem(storageKey);
+    } catch {}
+  }, []);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (status !== "idle") return;
@@ -39,7 +71,19 @@ export function StudyMentor({ bio, photo }: { bio: string; photo: string }) {
             : "Хүсэлт илгээж чадсангүй.",
         );
       }
-      setStatus("sent");
+      const result = await res.json();
+      if (!result.payment?.qrText)
+        throw new Error("Нэхэмжлэлийн мэдээллийг шалгана уу.");
+      const session: Checkout = {
+        time: String(fields.get("requestedTime")),
+        payment: result.payment,
+      };
+      setCheckout(session);
+      setShowPayment(true);
+      setStatus("idle");
+      try {
+        sessionStorage.setItem(storageKey, JSON.stringify(session));
+      } catch {}
     } catch (err) {
       setError(err instanceof Error ? err.message : "Холболтоо шалгана уу.");
       setStatus("idle");
@@ -90,9 +134,47 @@ export function StudyMentor({ bio, photo }: { bio: string; photo: string }) {
           <CalendarDays size={20} />
           Уулзалтын цаг авах
         </h3>
-        {status === "sent" ? (
+        <p className="mt-2 text-base font-bold text-slate-900">
+          1 цаг · 1,000,000 ₮
+        </p>
+        <p className="mt-1 text-sm text-slate-600">
+          ESIM данс · Хаан банк · 320005005252080629
+        </p>
+        {showPayment && checkout && (
+          <PaidAccessPaymentModal
+            itemId={checkout.time}
+            title="В. Есөнтөмөр · Уулзалт"
+            payment={checkout.payment}
+            checkUrl={API + "/forms/study-mentor-meeting/payment/check"}
+            onPaid={paid}
+            onClose={() => setShowPayment(false)}
+          />
+        )}
+        {checkout ? (
+          <div className="mt-4">
+            <p>Сонгосон цаг · {checkout.time.replace("T", " ")}</p>
+            <button
+              className="mt-3 min-h-12 rounded-xl bg-sky-700 px-4 text-white"
+              onClick={() => setShowPayment(true)}
+            >
+              QR төлбөр нээх
+            </button>
+            <button
+              className="ml-3 min-h-12"
+              onClick={() => {
+                setCheckout(null);
+                setRefresh((n) => n + 1);
+                try {
+                  sessionStorage.removeItem(storageKey);
+                } catch {}
+              }}
+            >
+              Цагийн жагсаалт
+            </button>
+          </div>
+        ) : status === "sent" ? (
           <p role="status" className="mt-3 text-emerald-800">
-            Хүсэлтийг хүлээн авлаа. Цагийг таны утсаар баталгаажуулна.
+            Төлбөр төлөгдөж, уулзалтын цаг баталгаажлаа.
           </p>
         ) : (
           <form
