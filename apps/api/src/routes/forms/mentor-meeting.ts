@@ -10,7 +10,7 @@ const fields = [
   ["requestedTime", "Хүссэн цаг (Улаанбаатар)"],
 ].map(([id, label]) => ({ id, label, type: "text", required: true }));
 
-export const mentorMeetings = Router();
+export const mentorMeetings: Router = Router();
 mentorMeetings.post(
   "/forms/study-mentor-meeting/responses",
   rateLimit({
