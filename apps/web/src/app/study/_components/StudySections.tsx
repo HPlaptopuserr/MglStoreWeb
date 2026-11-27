@@ -1,5 +1,6 @@
 "use client";
 
+import { useStoreWebView } from "@/lib/use-store-webview";
 import { useState } from "react";
 import { GraduationCap, Search, SlidersHorizontal, X } from "lucide-react";
 import type { ProjectItem } from "@/components/molecules/projects/project-types";
@@ -25,6 +26,7 @@ export function StudySections({
   onOpenMaterial,
   onRetry,
 }: StudySectionsProps) {
+  const embedded = useStoreWebView();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
   const [teacher, setTeacher] = useState("");
@@ -66,9 +68,50 @@ export function StudySections({
     setTeacher("");
   };
 
+  const searchField = (
+    <div>
+      <label
+        htmlFor="study-search"
+        className={
+          embedded
+            ? "sr-only"
+            : "mb-2 block text-sm font-semibold text-slate-700"
+        }
+      >
+        Сургалт хайх
+      </label>
+      <div className="relative">
+        <Search
+          className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-slate-400"
+          aria-hidden="true"
+        />
+        <input
+          id="study-search"
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Сургалт, багш, байршил…"
+          className="h-12 w-full rounded-xl border border-slate-300 bg-slate-50 pl-10 pr-3 text-base outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-100"
+        />
+      </div>
+    </div>
+  );
+
   return (
     <>
-      <header className="mb-6 border-b border-slate-200 pb-6 sm:mb-8">
+      {embedded && (
+        <div
+          role="search"
+          className="sticky top-0 z-30 -mx-4 mb-3 border-b border-slate-200 bg-white px-4 py-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
+        >
+          {searchField}
+        </div>
+      )}
+      <header
+        className={
+          embedded ? "sr-only" : "mb-6 border-b border-slate-200 pb-6 sm:mb-8"
+        }
+      >
         <p className="flex items-center gap-2 text-sm font-semibold text-sky-700">
           <GraduationCap className="h-5 w-5" aria-hidden="true" />
           Сургалт · Зөвлөгөө
@@ -86,29 +129,12 @@ export function StudySections({
         aria-label="Сургалт хайх, шүүх"
         className="mb-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
       >
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_240px]">
-          <div>
-            <label
-              htmlFor="study-search"
-              className="mb-2 block text-sm font-semibold text-slate-700"
-            >
-              Сургалт хайх
-            </label>
-            <div className="relative">
-              <Search
-                className="pointer-events-none absolute left-3 top-3.5 h-5 w-5 text-slate-400"
-                aria-hidden="true"
-              />
-              <input
-                id="study-search"
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Сургалт, багш, байршил…"
-                className="h-12 w-full rounded-xl border border-slate-300 bg-slate-50 pl-10 pr-3 text-base outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-100"
-              />
-            </div>
-          </div>
+        <div
+          className={
+            embedded ? "" : "grid gap-3 sm:grid-cols-[minmax(0,1fr)_240px]"
+          }
+        >
+          {!embedded && searchField}
           <div>
             <label
               htmlFor="study-teacher"

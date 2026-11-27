@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import { useStoreWebView } from "@/lib/use-store-webview";
 import { usePathname } from "next/navigation";
 import { Header } from "@/components/organisms/layouts/Header";
 import { Footer } from "@/components/organisms/layouts/Footer";
@@ -11,6 +12,7 @@ import { AuthProvider } from "@/lib/auth-context";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const storeWebView = useStoreWebView();
   const isContractRoute = pathname?.startsWith("/contract");
   const isProfileRoute = pathname?.startsWith("/profile");
   const isOrdersRoute = pathname?.startsWith("/orders");
@@ -24,6 +26,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     pathname || "",
   );
   const hideGlobalShell =
+    (pathname === "/study" && storeWebView) ||
     (pathname === "/2003" || pathname?.startsWith("/2003/")) ||
     (pathname === "/mgl-club" || pathname?.startsWith("/mgl-club/")) ||
     isContractRoute ||
