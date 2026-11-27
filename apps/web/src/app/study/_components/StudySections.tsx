@@ -1,11 +1,25 @@
 "use client";
 
-import { useStoreWebView } from "@/lib/use-store-webview";
+import { useStudyNavigation, useStoreWebView } from "@/lib/use-store-webview";
 import { useState } from "react";
-import { GraduationCap, Search, SlidersHorizontal, X } from "lucide-react";
+import {
+  GraduationCap,
+  Users,
+  LayoutGrid,
+  Search,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 import type { ProjectItem } from "@/components/molecules/projects/project-types";
 import { StudyMaterialCard } from "./StudyMaterialCards";
 import { parseTeacherItems, type StudySettings } from "./study-utils";
+
+const destinations = [
+  { id: "courses", label: "Сургалт", icon: GraduationCap },
+  { id: "teachers", label: "Багш нар", icon: Users },
+  { id: "categories", label: "Чиглэл", icon: LayoutGrid },
+] as const;
+type StudyTab = (typeof destinations)[number]["id"];
 
 type StudySectionsProps = {
   displayMaterials: ProjectItem[];
@@ -26,6 +40,8 @@ export function StudySections({
   onOpenMaterial,
   onRetry,
 }: StudySectionsProps) {
+  const studyNavigation = useStudyNavigation();
+  const [tab, setTab] = useState<StudyTab>("courses");
   const embedded = useStoreWebView();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
@@ -99,7 +115,7 @@ export function StudySections({
 
   return (
     <>
-      {embedded && (
+      {embedded && !studyNavigation && (
         <div
           role="search"
           className="sticky top-0 z-30 -mx-4 mb-3 border-b border-slate-200 bg-white px-4 py-2 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8"
@@ -125,56 +141,62 @@ export function StudySections({
         </p>
       </header>
 
-      <section
-        aria-label="Сургалт хайх, шүүх"
-        className="mb-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
-      >
-        <div
-          className={
-            embedded ? "" : "grid gap-3 sm:grid-cols-[minmax(0,1fr)_240px]"
-          }
+      {(!studyNavigation || tab !== "courses") && (
+        <section
+          aria-label="Сургалт хайх, шүүх"
+          className="mb-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5"
         >
-          {!embedded && searchField}
-          <div>
-            <label
-              htmlFor="study-teacher"
-              className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700"
+          {(!studyNavigation || tab === "teachers") && (
+            <div
+              className={
+                embedded ? "" : "grid gap-3 sm:grid-cols-[minmax(0,1fr)_240px]"
+              }
             >
-              <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-              Багшаар шүүх
-            </label>
-            <select
-              id="study-teacher"
-              value={teacher}
-              onChange={(event) => setTeacher(event.target.value)}
-              className="h-12 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 text-base outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-100"
+              {!embedded && searchField}
+              <div>
+                <label
+                  htmlFor="study-teacher"
+                  className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-700"
+                >
+                  <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                  Багшаар шүүх
+                </label>
+                <select
+                  id="study-teacher"
+                  value={teacher}
+                  onChange={(event) => setTeacher(event.target.value)}
+                  className="h-12 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 text-base outline-none focus:border-sky-600 focus:ring-2 focus:ring-sky-100"
+                >
+                  <option value="">Бүх багш</option>
+                  {teachers.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+          {(!studyNavigation || tab === "categories") && (
+            <div
+              className="flex gap-2 overflow-x-auto pb-2"
+              aria-label="Сургалтын чиглэл"
             >
-              <option value="">Бүх багш</option>
-              {teachers.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
+              {["", ...categories].map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  aria-pressed={category === name}
+                  onClick={() => setCategory(name)}
+                  className={`min-h-11 shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${category === name ? "border-sky-700 bg-sky-700 text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}
+                >
+                  {name || "Бүгд"}
+                </button>
               ))}
-            </select>
-          </div>
-        </div>
-        <div
-          className="flex gap-2 overflow-x-auto pb-2"
-          aria-label="Сургалтын чиглэл"
-        >
-          {["", ...categories].map((name) => (
-            <button
-              key={name}
-              type="button"
-              aria-pressed={category === name}
-              onClick={() => setCategory(name)}
-              className={`min-h-11 shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${category === name ? "border-sky-700 bg-sky-700 text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}
-            >
-              {name || "Бүгд"}
-            </button>
-          ))}
-        </div>
-      </section>
+            </div>
+          )}
+        </section>
+      )}
 
       <section aria-labelledby="study-results-heading" aria-busy={loading}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -265,6 +287,29 @@ export function StudySections({
           </div>
         )}
       </section>
+      {studyNavigation && (
+        <nav
+          aria-label="Сургалт зөвлөгөөний цэс"
+          className="fixed inset-x-0 bottom-0 z-30 flex justify-center border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)]"
+        >
+          {destinations.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              aria-current={tab === id ? "page" : undefined}
+              onClick={() => {
+                setTab(id);
+                reset();
+                window.scrollTo(0, 0);
+              }}
+              className={`flex min-h-16 flex-1 flex-col items-center justify-center gap-1 text-xs font-semibold focus-visible:outline-sky-700 ${tab === id ? "bg-sky-50 text-sky-800" : "text-slate-600"}`}
+            >
+              <Icon className="h-5 w-5" aria-hidden="true" />
+              {label}
+            </button>
+          ))}
+        </nav>
+      )}
     </>
   );
 }

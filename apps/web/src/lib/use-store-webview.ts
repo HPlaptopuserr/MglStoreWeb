@@ -10,3 +10,10 @@ const serverSnapshot = () => false;
 export function useStoreWebView() {
   return useSyncExternalStore(subscribe, readUserAgent, serverSnapshot);
 }
+
+const readStudyNavigation = () =>
+  readUserAgent() && navigator.userAgent.includes("StudyNav/1");
+
+export function useStudyNavigation() {
+  return useSyncExternalStore(subscribe, readStudyNavigation, serverSnapshot);
+}
